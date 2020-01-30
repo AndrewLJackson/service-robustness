@@ -1,0 +1,274 @@
+---
+title: "Estimate Robustness of Real Networks"
+output: html_notebook
+author: Andrew L Jackson, Jean-Francois Arnoldi, Sam P. Ross & Ian Donohue
+date: "`r format(Sys.time(), '%d %B %Y')`"
+---
+
+
+```{r setup}
+library(tidyverse)
+library(furrr) # for parallel implmenetation of purrr
+```
+
+## Import data
+
+Loop over the datasets and import them into a list.
+
+```{r import-webs}
+
+# get all file names in the folder data/
+all_files <- dir("data/")
+
+# find the indices that are README or reference files
+remove_these <- c(grep("README", all_files), grep("references", all_files))
+
+# remove them from the vector of names and prepend the data/ folder address
+all_web_files <- paste0("data/", all_files[-remove_these])
+
+# import all the webs
+all_webs <- map(all_web_files, ~sign(read.csv(.x)))
+
+# add names to each of the list entries. Required by map()
+names(all_webs) <- all_web_files
+```
+
+
+
+## Summary statistics
+
+### Define some functions that we will use to generate summary statics
+
+A function to calculate complexity for a given web. 
+
+```{r complexity-function}
+
+complexityEstimate <- function(A) {
+  
+  # rows are traits
+  N <- nrow(A)
+  
+  # columns are species
+  S <- ncol(A)
+  
+  c <- (N / sum(A)) * log(S)
+  
+  
+}
+
+```
+
+A function to calculate the robustness of a given web.
+
+```{r robustness-function}
+
+robustness <- function(Aperm, S = ncol(Aperm)){
+  
+   # number of Species
+  # S <- ncol(Aperm)
+  
+  # number of traits
+  # N <- nrow(Aperm)
+  
+  nn <- 0
+  mm <- 0
+  
+  while (mm==0 & nn <= S) {
+    nn <- nn + 1
+    # mm <- min(rowSums( matrix(Aperm[, 1:nn], nrow = N, ncol = nn) ))
+    mm <- min(rowSums( as.matrix(Aperm[, 1:nn])))
+  }
+  
+  return( (S-nn+1) / (S * 1.0))
+}
+
+```
+
+A function to take a given web, repeatedly resample it and remove species until it breaks. This lets us create an estimate of the mean robustness of a given web given random extinctions.
+
+```{r resample-robustness}
+
+shuffleExinctionSingle <- function(A, S) {
+  
+  # generate a permuation for species in A
+  species <- sample(S)
+  
+  # premute within rows
+  Aperm <- A[,species]
+  
+  # calculate robustness
+  rob <- robustness(Aperm)
+  
+  return(rob)
+  
+}
+
+sampleRobustness <- function(A, S = ncol(A), nb = 10){
+  
+  # number of Species
+  # S <- ncol(A)
+  
+  # no longer need to prep this as we use map()
+  # vector of results
+  # res <- numeric(nb)
+  
+  # loop over replicates using parallel furrr map function.
+  res <- future_map_dbl(1:nb, ~shuffleExinctionSingle( A, S))
+  
+  
+  # for (k in 1:nb) {
+  #   
+  #   rob <- shuffleExinctionSingle(A = A, S = S)
+  #   
+  #   res[k] <- rob
+  #   
+  # }
+  
+  # return the mean of the results vector which is mean of 
+  return(mean(res))  
+  
+}
+
+```
+
+### Apply our functions to each web
+
+Calculate some summary statistics on each web and conver to data.frame format.
+
+```{r summary-statistics}
+
+
+
+df <-  all_webs %>% 
+  map_df(~data.frame(S = as.numeric(ncol(.x)),
+                     N = as.numeric(nrow(.x)),
+                     sum_A = as.numeric(sum(.x)),
+                     min_S_per_N = min(rowSums(.x)),
+                     var_S_per_N = var(rowSums(.x)),
+                     mean_S_per_N = mean(rowSums(.x)),
+                     est_p = sum(.x) / (ncol(.x) * nrow(.x)),
+                     complexity = complexityEstimate(.x)
+                     )
+         )
+
+# calculate dispersion, where the expected value according to the binomial 
+# distributio is 1.
+df <- df %>% mutate(dispersion = var_S_per_N / mean_S_per_N * (1 / 1 - est_p))
+
+ # test_traits[i] <- min(rowSums(tmp))
+ #  var_traits[i] <- var(rowSums(tmp))
+ #  mean_traits[i] <- mean(rowSums(tmp))
+ #  est_p[i] <- sum(tmp) / (res_S[i] * res_N[i])
+ #  dispersion_test[i] <- (var_traits[i] / mean_traits[i]) * (1/(1-est_p[i]))
+  
+  
+# print(df)
+
+```
+
+## Simulate Extinctions to calculate robustness
+
+```{r simulate-extinctions}
+
+# set up the multicore for the function sampleRobustness which calls them.
+# im not sure if i should do this within sampleRobustness or if its ok to 
+# do it once here outside.
+plan(multisession(workers = 3))
+
+do_robustness <- FALSE
+
+if (do_robustness == TRUE ) {
+  
+  robustness_results <- all_webs %>% 
+    map_dbl(~sampleRobustness(.x, nb = 500))
+  
+  save(robustness_results, file = "robustness_run.rda", compress = "xz")
+
+  
+}
+
+if (do_robustness == FALSE){
+  print("NB sampling for robustness not run. Loaded instead from previous run.")
+  load(robustness=run.rda)
+}
+
+# Add the robustness estimate to the data.frame and 
+# calcuate the residual to Jeff's model
+df <- df %>% 
+  mutate(robustness = robustness_results)
+
+df <- df %>% 
+  mutate(residual = 
+           robustness - ( 0.7*exp(-3.5*complexity**2)+.3*exp(-0.8*complexity))
+         )
+
+
+
+
+
+
+```
+
+
+
+## Plot results
+
+```{r create-a-df-for-jeffs-model}
+
+new_c <- seq(0, 2.5, length = 100)
+est_r <- 0.7*exp(-3.5*new_c**2)+.3*exp(-0.8*new_c)
+
+fit_df <- data.frame(new_c = new_c, 
+                     est_r = est_r)
+
+
+```
+
+
+```{r}
+
+g1 <- ggplot(df, aes(x = complexity,
+                     y = robustness,
+                     color = log10(dispersion))) + 
+  geom_point() + 
+  scale_color_viridis_c() + 
+  geom_line(data = fit_df, mapping = aes(x = new_c, y = est_r, color = NULL))
+
+print(g1)
+
+ggsave(g1,filename = "robust-complexity.jpeg", width = 10, height = 7)
+
+```
+
+```{r residuals-to-estimated-line}
+
+g2 <- ggplot(df, aes(x = complexity,
+                     y = residual,
+                     color = log10(dispersion))) + 
+  geom_point() + 
+  scale_color_viridis_c() + 
+  geom_hline(yintercept = 0)
+print(g2)
+
+ggsave(g2,filename = "resid-complexity.jpeg", width = 10, height = 7)
+
+```
+
+```{r}
+
+g3 <- ggplot(df, aes(x = log10(dispersion_test),
+                     y = residual,
+                     color = log10(dispersion_test))) + 
+  geom_point() + 
+  scale_color_viridis_c() + 
+  geom_hline(yintercept = 0)
+print(g3)
+
+ggsave(g3,filename = "resid-dispersion.jpeg", width = 10, height = 7)
+
+```
+
+
+
+
+

@@ -18,7 +18,7 @@ Loop over web-of-life networks and calculate robustness.
 
 ```{r load-one-dataset}
 
-all_files <- dir("web-of-life_2020-01-15_120715/")
+all_files <- dir("data/")
 
 remove_these <- c(grep("README", all_files), grep("references", all_files))
 
@@ -30,7 +30,7 @@ Pick the first one to test
 
 ```{r one-web}
 
-web <- read.csv(paste0("web-of-life_2020-01-15_120715/", all_webs[1]))
+web <- read.csv(paste0("data/", all_webs[1]))
 
 # rows are traits
 N <- nrow(web)
@@ -52,7 +52,7 @@ res_S <- res_N <- test_traits <-
 for (i in 1:length(all_webs)) {
   
   # read in the web and convert to binary
-  tmp <- sign(read.csv(paste0("web-of-life_2020-01-15_120715/", all_webs[i])))
+  tmp <- sign(read.csv(paste0("data/", all_webs[i])))
   
   res_S[i] <- ncol(tmp)
   res_N[i] <- nrow(tmp)
@@ -182,7 +182,7 @@ res_r <- res_c
 
 for (i in 1:length(all_webs)) {
   
-  tmp <- sign(read.csv(paste0("web-of-life_2020-01-15_120715/", all_webs[i])))
+  tmp <- sign(read.csv(paste0("data/", all_webs[i])))
   
   res_c[i] <- complexityEstimate(tmp)
   res_r[i] <- sampleRobustness(tmp, nb = 200)
@@ -270,7 +270,7 @@ print(g3)
 
 ```{r jeff-test}
 
-testA <- read.table("web-of-life_2020-01-15_120715/interactions.txt", header = TRUE)
+testA <- read.table("data/interactions.txt", header = TRUE)
 
 #coerce to matrix and binary
 testA <- sign(as.matrix(testA))

@@ -51,7 +51,11 @@ complexityEstimate <- function(A) {
   # columns are species
   S <- ncol(A)
   
+  # original complexity estimate
   c <- (N / sum(A)) * log(S)
+  
+  # new complexity estimate 3/Feb/2020
+  c <- N * log(N) / sum(A)
   
   
 }
@@ -189,7 +193,7 @@ if (do_robustness == TRUE ) {
 
 if (do_robustness == FALSE){
   print("NB sampling for robustness not run. Loaded instead from previous run.")
-  load(robustness=run.rda)
+  load("robustness_run.rda")
 }
 
 # Add the robustness estimate to the data.frame and 
@@ -216,7 +220,12 @@ df <- df %>%
 ```{r create-a-df-for-jeffs-model}
 
 new_c <- seq(0, 2.5, length = 100)
-est_r <- 0.7*exp(-3.5*new_c**2)+.3*exp(-0.8*new_c)
+
+# original approximation
+# est_r <- 0.7*exp(-3.5*new_c**2)+.3*exp(-0.8*new_c)
+
+# new approximation 3/Feb/2020
+est_r <- exp( (-0.5 * new_c ) - (2 * new_c ^ 2) ) 
 
 fit_df <- data.frame(new_c = new_c, 
                      est_r = est_r)
@@ -227,7 +236,7 @@ fit_df <- data.frame(new_c = new_c,
 
 ```{r}
 
-g1 <- ggplot(df, aes(x = complexity,
+g1 <- ggplot(df %>% filter(N <= Inf), aes(x = complexity,
                      y = robustness,
                      color = log10(dispersion))) + 
   geom_point() + 
@@ -256,9 +265,9 @@ ggsave(g2,filename = "resid-complexity.jpeg", width = 10, height = 7)
 
 ```{r}
 
-g3 <- ggplot(df, aes(x = log10(dispersion_test),
+g3 <- ggplot(df, aes(x = log10(dispersion),
                      y = residual,
-                     color = log10(dispersion_test))) + 
+                     color = log10(dispersion))) + 
   geom_point() + 
   scale_color_viridis_c() + 
   geom_hline(yintercept = 0)

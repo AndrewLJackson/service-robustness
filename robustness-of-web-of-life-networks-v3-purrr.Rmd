@@ -26,7 +26,7 @@ remove_these <- c(grep("README", all_files), grep("references", all_files))
 # remove them from the vector of names and prepend the data/ folder address
 all_web_files <- paste0("data/", all_files[-remove_these])
 
-# import all the webs
+# import all the webs and covert then to binary association form
 all_webs <- map(all_web_files, ~sign(read.csv(.x)))
 
 # add names to each of the list entries. Required by map()
@@ -163,6 +163,9 @@ df <-  all_webs %>%
 # distributio is 1.
 df <- df %>% mutate(dispersion = var_S_per_N / mean_S_per_N * (1 / 1 - est_p))
 
+# add labels for each type of web
+df <- df %>% mutate(type = unlist(map(names(all_webs), ~substr(.x, 8, 9))))
+
  # test_traits[i] <- min(rowSums(tmp))
  #  var_traits[i] <- var(rowSums(tmp))
  #  mean_traits[i] <- mean(rowSums(tmp))
@@ -274,7 +277,7 @@ ggsave(g2,filename = "resid-complexity.jpeg", width = 10, height = 7)
 g3 <- ggplot(df, aes(x = log10(dispersion),
                      y = residual,
                      color = log10(dispersion))) + 
-  geom_point() + 
+  geom_point(aes(shape = type)) + 
   scale_color_viridis_c() + 
   geom_hline(yintercept = 0)
 print(g3)

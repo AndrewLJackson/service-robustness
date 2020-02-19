@@ -11,7 +11,7 @@ library(tidyverse)
 library(furrr) # for parallel implmenetation of purrr
 ```
 
-## Import data
+## Import the Web of Life data
 
 Loop over the datasets and import them into a list.
 
@@ -31,7 +31,22 @@ all_webs <- map(all_web_files, ~sign(read.csv(.x)))
 
 # add names to each of the list entries. Required by map()
 names(all_webs) <- all_web_files
+
+# a table of all the webs by type
+n_types <- table(unlist(map(names(all_webs), ~substr(.x, 8, 9))))
+
+
 ```
+
+
+We used all the available bipartite webs from [http://www.web-of-life.es](Web of Life) as downloaded on 18 Febrary 2020. These comprise:
+
++ AF = Anemone-Fish (n = `r n_types["AF"]`)
++ HP = Host-Parasite (n = `r n_types["HP"]`)
++ PA = Plant-Ant (n = `r n_types["PA"]`)
++ PH = Plant-Herbivore (n = `r n_types["PH"]`)
++ PL = Plant-Pollinator (n = `r n_types["PL"]`)
++ SD = Seed dispersal (n = `r n_types["SD"]`)
 
 
 
@@ -147,7 +162,7 @@ Calculate some summary statistics on each web and conver to data.frame format.
 
 
 
-df <-  all_webs %>% 
+df_webs <-  all_webs %>% 
   map_df(~data.frame(S = as.numeric(ncol(.x)),
                      N = as.numeric(nrow(.x)),
                      sum_A = as.numeric(sum(.x)),
@@ -161,10 +176,8 @@ df <-  all_webs %>%
 
 # calculate dispersion, where the expected value according to the binomial 
 # distributio is 1.
-df <- df %>% mutate(dispersion = var_S_per_N / mean_S_per_N * (1 / 1 - est_p))
+df_webs <- df_webs %>% mutate(dispersion = var_S_per_N / mean_S_per_N * (1 / 1 - est_p))
 
-# add labels for each type of web
-df <- df %>% mutate(type = unlist(map(names(all_webs), ~substr(.x, 8, 9))))
 
  # test_traits[i] <- min(rowSums(tmp))
  #  var_traits[i] <- var(rowSums(tmp))
@@ -205,17 +218,16 @@ if (do_robustness == FALSE){
 
 # Add the robustness estimate to the data.frame and 
 # calcuate the residual to Jeff's model
-df <- df %>% 
+df_webs <- df_webs %>% 
   mutate(robustness = robustness_results)
 
-df <- df %>% 
+df_webs <- df_webs %>% 
   mutate(residual = 
            robustness - ( 0.7*exp(-3.5*complexity**2)+.3*exp(-0.8*complexity))
          )
 
-
-
-
+# add labels for each type of web
+df_webs <- df_webs %>% mutate(type = unlist(map(names(all_webs), ~substr(.x, 8, 9))))
 
 
 ```
@@ -245,7 +257,7 @@ fit_df <- data.frame(new_c = new_c,
 
 ```{r}
 
-g1 <- ggplot(df %>% filter(N <= Inf), aes(x = complexity,
+g1 <- ggplot(df_webs %>% filter(N <= Inf), aes(x = complexity,
                      y = robustness,
                      color = log10(dispersion))) + 
   geom_point() + 
@@ -260,7 +272,7 @@ ggsave(g1,filename = "robust-complexity.jpeg", width = 10, height = 7)
 
 ```{r residuals-to-estimated-line}
 
-g2 <- ggplot(df, aes(x = complexity,
+g2 <- ggplot(df_webs, aes(x = complexity,
                      y = residual,
                      color = log10(dispersion))) + 
   geom_point() + 
@@ -274,12 +286,15 @@ ggsave(g2,filename = "resid-complexity.jpeg", width = 10, height = 7)
 
 ```{r}
 
-g3 <- ggplot(df, aes(x = log10(dispersion),
+g3 <- ggplot(df_webs, aes(x = log10(dispersion),
                      y = residual,
                      color = log10(dispersion))) + 
   geom_point(aes(shape = type)) + 
   scale_color_viridis_c() + 
-  geom_hline(yintercept = 0)
+  geom_hline(yintercept = 0) + 
+  labs(color = expression(log[10](dispersion)), 
+       shape = "Web Type")
+      
 print(g3)
 
 ggsave(g3,filename = "resid-dispersion.jpeg", width = 10, height = 7)
@@ -287,6 +302,56 @@ ggsave(g3,filename = "resid-dispersion.jpeg", width = 10, height = 7)
 ```
 
 
+## Fit linear models
 
+We can fit some linear models to calculate the $R^2$ values of the various explanatory variables of robustness.
+
+```{r}
+
+N_vec <- 30
+beta <- 1.3
+
+df_webs <- df_webs %>% mutate(robustness_hat = (N_vec * 
+                               (exp(-complexity - beta * complexity ^ 2 )) )  / 
+                               (N_vec + 1))
+
+# analytical_model <-  with( df_webs, 
+#                            {(N_vec * 
+#                                (exp(-complexity - beta * complexity ^ 2 )) )  / 
+#                                (N_vec + 1)}
+#                            )
+
+
+# null model
+m0 <- lm(robustness ~1, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above with analytical model as offset
+m1 <- lm(robustness ~ -1, 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above including log10(dispersion) as covariate
+m2 <- lm(robustness ~ I(log10(dispersion)), 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above including web type as covariate
+m3 <- lm(robustness ~ I(log10(dispersion)) + factor(type), 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+
+
+```
+
+
+```{r}
+
+```
 
 

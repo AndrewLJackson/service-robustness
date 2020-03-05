@@ -302,6 +302,39 @@ ggsave(g3,filename = "resid-dispersion.jpeg", width = 10, height = 7)
 ```
 
 
+```{r}
+
+g4 <- ggplot(df_webs, aes(x = log10(dispersion),
+                     y = residual,
+                     color = type)) + 
+  geom_point(aes(shape = type), size = 2) + 
+  scale_color_viridis_d() + 
+  geom_hline(yintercept = 0) + 
+  labs(color = expression(log[10](dispersion)), 
+       shape = "Web Type")
+      
+print(g4)
+
+# ggsave(g4,filename = "resid-dispersion.jpeg", width = 10, height = 7)
+
+```
+
+
+```{r}
+
+g5 <- ggplot(df_webs %>% filter(N <= Inf), aes(x = complexity,
+                     y = robustness,
+                     color = type)) + 
+  geom_point(aes(shape = type), size = 4) + 
+  scale_color_viridis_d() + 
+  geom_line(data = fit_df, mapping = aes(x = new_c, y = est_r, color = NULL))
+
+print(g5)
+
+# ggsave(g5,filename = "robust-complexity.jpeg", width = 10, height = 7)
+
+```
+
 ## Fit linear models
 
 We can fit some linear models to calculate the $R^2$ values of the various explanatory variables of robustness.

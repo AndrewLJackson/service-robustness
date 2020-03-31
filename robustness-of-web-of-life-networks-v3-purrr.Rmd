@@ -76,10 +76,38 @@ complexityEstimate <- function(A) {
   log_q <- -log ( (S * N - sum(A)) / (S * N))
   c <- (1/S) * (log(N) / log_q)
   
+  return(c)
   
 }
 
+
 ```
+
+A function to calculate fragility.
+
+fragility  f=-log(N)/\log(q)/S where q=1-p and p is the connectance estimated as p~#links/(SxN). I wrote this more cleanly in overleaf. 
+
+```{r fragility}
+fragilityEstimate <- function(A) {
+  
+  # rows are traits
+  N <- nrow(A)
+  
+  # columns are species
+  S <- ncol(A)
+  
+  # connectance measures
+  p <- sum(A) / (S * N)
+  q <-  1 - p
+  
+  # fragility
+  f <- (1/S) * (-log(N) / log(q))
+  
+  return(f)
+  
+}
+```
+
 
 A function to calculate the robustness of a given web.
 
@@ -170,7 +198,8 @@ df_webs <-  all_webs %>%
                      var_S_per_N = var(rowSums(.x)),
                      mean_S_per_N = mean(rowSums(.x)),
                      est_p = sum(.x) / (ncol(.x) * nrow(.x)),
-                     complexity = complexityEstimate(.x)
+                     complexity = complexityEstimate(.x),
+                     fragility = fragilityEstimate(.x)
                      )
          )
 
@@ -194,14 +223,16 @@ df_webs <- df_webs %>% mutate(dispersion = var_S_per_N / mean_S_per_N * (1 / 1 -
 
 ```{r simulate-extinctions}
 
-# set up the multicore for the function sampleRobustness which calls them.
-# im not sure if i should do this within sampleRobustness or if its ok to 
-# do it once here outside.
-plan(multisession(workers = 3))
+
 
 do_robustness <- FALSE
 
 if (do_robustness == TRUE ) {
+  
+  # set up the multicore for the function sampleRobustness which calls them.
+  # im not sure if i should do this within sampleRobustness or if its ok to 
+  # do it once here outside.
+  plan(multisession(workers = 3))
   
   robustness_results <- all_webs %>% 
     map_dbl(~sampleRobustness(.x, nb = 500))

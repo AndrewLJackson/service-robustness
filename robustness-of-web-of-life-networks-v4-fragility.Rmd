@@ -1,0 +1,593 @@
+---
+title: "Estimate Robustness of Real Networks"
+output: html_notebook
+author: Andrew L Jackson, Jean-Francois Arnoldi, Sam P. Ross & Ian Donohue
+date: "`r format(Sys.time(), '%d %B %Y')`"
+---
+
+
+```{r setup}
+library(tidyverse)
+library(furrr) # for parallel implmenetation of purrr
+library(latex2exp) # for latex style equations in figures
+library(patchwork)
+```
+
+## Import the Web of Life data
+
+Loop over the datasets and import them into a list.
+
+```{r import-webs}
+
+# get all file names in the folder data/
+all_files <- dir("data/")
+
+# find the indices that are README or reference files
+remove_these <- c(grep("README", all_files), grep("references", all_files))
+
+# remove them from the vector of names and prepend the data/ folder address
+all_web_files <- paste0("data/", all_files[-remove_these])
+
+# import all the webs and covert then to binary association form
+all_webs <- map(all_web_files, ~sign(read.csv(.x)))
+
+# add names to each of the list entries. Required by map()
+names(all_webs) <- all_web_files
+
+# a table of all the webs by type
+types <- unlist(map(names(all_webs), ~substr(.x, 8, 9)))
+n_types <- table(types)
+
+```
+
+
+We used all the available bipartite webs from [http://www.web-of-life.es](Web of Life) as downloaded on 18 Febrary 2020. The original matrices included measures of times recorded, which we converted to binary association matrices. Each interaction matrix types described below comprise frist the species in rows (S) and second the traits (N) by columns for example for species of Anemone (rows) provide habitat for Fish (columns):
+
++ AF = Anemone - Fish (n = `r n_types["AF"]`)
++ HP = Host - Parasite (n = `r n_types["HP"]`)
++ PA = Plant - Ant (n = `r n_types["PA"]`)
++ PH = Plant - Herbivore (n = `r n_types["PH"]`)
++ PL = Plant - Pollinator (n = `r n_types["PL"]`)
++ SD = Seed - dispersers (n = `r n_types["SD"]`)
+
+
+## Summary statistics
+
+### Define some functions that we will use to generate summary statics
+
+A function to calculate our measure of complexity for a given web. 
+
+```{r complexity-function}
+
+complexityEstimate <- function(A) {
+  
+  # rows are traits
+  N <- nrow(A)
+  
+  # columns are species
+  S <- ncol(A)
+  
+  # original complexity estimate
+  c <- (N / sum(A)) * log(S)
+  
+  # new complexity estimate 3/Feb/2020
+  # c <- N * log(N) / sum(A)
+  
+  # 6/feb/2020 
+  log_q <- -log ( (S * N - sum(A)) / (S * N))
+  c <- (1/S) * (log(N) / log_q)
+  
+  return(c)
+  
+}
+
+
+```
+
+A function to calculate our measure of fragility $f$, 
+
+$$f= \frac{1}{S} \frac{\log(N)}{|\log(q)|}$$ 
+
+where q=1-p and p is the connectance estimated as p~#links/(SxN). I wrote this more cleanly in overleaf. 
+
+```{r fragility}
+fragilityEstimate <- function(A) {
+  
+  # rows are traits
+  N <- nrow(A)
+  
+  # columns are species
+  S <- ncol(A)
+  
+  # connectance measures
+  p <- sum(A) / (S * N)
+  q <-  1 - p
+  
+  # fragility
+  # lines below are equivalent
+  # f <- (1/S) * (log(N) / abs(log(q)))
+  f <- -log(N) / log(q) / S
+  
+  
+  return(f)
+  
+}
+```
+
+
+A function to calculate the robustness of a given web.
+
+```{r robustness-function}
+
+robustness <- function(Aperm, S = ncol(Aperm)){
+  
+   # number of Species
+  # S <- ncol(Aperm)
+  
+  # number of traits
+  # N <- nrow(Aperm)
+  
+  nn <- 0
+  mm <- 0
+  
+  while (mm==0 & nn <= S) {
+    nn <- nn + 1
+    mm <- min(rowSums( as.matrix(Aperm[, 1:nn])))
+  }
+  
+  return( (S-nn+1) / (S * 1.0))
+}
+
+```
+
+A function to take a given web, repeatedly resample it and remove species until it breaks. This lets us create an estimate of the mean robustness of a given web given random extinctions.
+
+```{r resample-robustness}
+
+shuffleExinctionSingle <- function(A, S) {
+  
+  # generate a permuation for species in A
+  species <- sample(S)
+  
+  # premute within rows
+  Aperm <- A[,species]
+  
+  # calculate robustness
+  rob <- robustness(Aperm)
+  
+  return(rob)
+  
+}
+
+sampleRobustness <- function(A, S = ncol(A), nb = 10){
+  
+  # loop over replicates using parallel furrr map function.
+  res <- future_map_dbl(1:nb, ~shuffleExinctionSingle( A, S))
+  
+  # return the mean of the results vector which is mean of 
+  return(mean(res))  
+  
+}
+
+```
+
+A gaussian-exponential function to estimate robustness from fragility
+
+```{r predict-robustness-from-fragility}
+
+predictRobustness <- function(x) {exp(-x - (2/3)* x ^2 )}
+
+```
+
+
+### Apply our functions to each web
+
+Calculate some summary statistics on each web and conver to data.frame format.
+
+```{r summary-statistics}
+
+
+
+df_webs <-  all_webs %>% 
+  map_dfr(~data.frame(S = as.numeric(ncol(.x)),
+                     N = as.numeric(nrow(.x)),
+                     sum_A = as.numeric(sum(.x)),
+                     min_S_per_N = min(rowSums(.x)),
+                     var_S_per_N = var(rowSums(.x)),
+                     mean_S_per_N = mean(rowSums(.x)),
+                     est_p = sum(.x) / (ncol(.x) * nrow(.x)),
+                     complexity = complexityEstimate(.x),
+                     fragility = fragilityEstimate(.x), .id = "file"
+         )) %>% 
+  mutate(web_type = types)
+
+# calculate dispersion, where the expected value according to the binomial 
+# distributio is 1.
+df_webs <- df_webs %>% 
+  mutate(dispersion = (var_S_per_N / mean_S_per_N) * (1 / 1 - est_p))
+
+```
+
+If we assume that species S are connected to traits N according to a binomial distribution then we calculate how the empirical networks deviate from this prediction. Speficically, the first two moments of the binomial distribution (with random variable $x$) are given by $\bar{x} = pq$ and $\text{Var}(x) = npq$ where $q = 1-p$.  We can then define Dispersion $d$ as the proportional deviance from 1 of the sample estimated 
+
+$$d  = \frac{1}{q} \frac{\text{Var}(S_n)}{\bar{S_n}}$$
+
+
+
+
+## Simulate Extinctions to calculate robustness
+
+```{r simulate-extinctions}
+
+n_samples <- 500
+
+do_robustness <- FALSE
+
+if (do_robustness == TRUE ) {
+  
+  # set up the multicore for the function sampleRobustness which calls them.
+  # im not sure if i should do this within sampleRobustness or if its ok to 
+  # do it once here outside.
+  plan(multisession(workers = 3))
+  
+  robustness_results <- all_webs %>% 
+    map_dbl(~sampleRobustness(.x, nb = n_samples))
+  
+  save(robustness_results, file = "robustness_run.rda", compress = "xz")
+
+  
+}
+
+if (do_robustness == FALSE){
+  print("NB sampling for robustness not run. Loaded instead from previous run.")
+  load("robustness_run.rda")
+}
+
+# Add the robustness estimate to the data.frame and 
+# calcuate the residual to Jeff's model
+df_webs <- df_webs %>% 
+  mutate(robustness = robustness_results)
+
+df_webs <- df_webs %>% 
+  mutate(residual = robustness - predictRobustness(complexity))
+
+# add the estimated fragility for each network based on their fragility
+df_webs <- df_webs %>% mutate(robustness_hat = predictRobustness(fragility))
+
+```
+
+Random sampling of  extinctions until loss of any trait was simulate with $n =$ `r n_samples` on each of the empirical interaction networks and the mean proportion of extinctions taken as the robustness $R$ for that network.
+
+## Filter webs
+
+We remove webs that have only 1 trait (n = 3) and webs that show no variation in the number of species S per trait N (n = 4, and all of which are Anemone-Fish type webs, all of which had anemones being associated with only 1 or 0 species of fish).
+
+```{r filter-webs}
+
+df_webs <- df_webs %>% filter( dispersion != 0.0 & !is.na(var_S_per_N) )
+
+```
+
+## Plot results
+
+Here we set some plotting parameters for consistency across panels.
+
+```{r plot-defaults}
+
+axis_text_size <- 12
+axis_title_size <- 16
+
+```
+
+
+In order to plot the analytical model, we create a dataframe object of a sequence of fragility values spanning out observed range and the corresponding predicted robustness ($\hat{R}$). 
+
+```{r create-a-dataframe-for-jeffs-model}
+
+new_f <- seq(from = 0, to = 2.5, length.out = 100)
+
+# original approximation
+# est_r <- 0.7*exp(-3.5*new_c**2)+.3*exp(-0.8*new_c)
+
+# new approximation 3/Feb/2020
+N_vec <- 30
+beta <- 1.3
+
+# the estimated Robusteness (Rhat)
+est_r <- predictRobustness(new_f)
+
+fit_df <- data.frame(new_f = new_f, 
+                     est_r = est_r)
+
+
+```
+
+
+
+```{r}
+
+g1 <- ggplot(df_webs, aes(x = fragility,
+                     y = robustness,
+                     color = log10(dispersion))) + 
+  geom_point() + 
+  scale_color_viridis_c(guide = guide_legend(override.aes = list(color = "white"))) +
+  geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
+  ylab("Robustness (R)") + 
+  xlab("Fragility (f)") +
+   labs(color = expression(log[10](d))) +
+  theme_classic() + 
+  theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size)) + 
+  theme(
+        legend.text = element_text(color = "white"),
+        legend.title = element_text(color = "white")
+        )
+
+
+# print(g1)
+# 
+# ggsave(g1,filename = "robust-fragility-empirical.pdf", 
+#        width = 15, height = 9, units = "cm",
+#        scale = 1)
+
+```
+
+
+
+```{r}
+
+g3_simplified <- ggplot(df_webs, aes(x = log(dispersion),
+                     y = residual,
+                     color = log(dispersion))) + 
+  geom_point() + 
+  scale_color_viridis_c() + 
+  geom_hline(yintercept = 0) + 
+  geom_smooth(method = lm) +
+  labs(color = expression(log(d)), 
+       shape = "Web Type") + 
+  ylab(expression(R - hat(R))) + 
+  xlab(TeX("$\\log(\\dispersion)$")) +
+  theme_classic() + 
+ theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size))
+  
+      
+# print(g3_simplified)
+
+# ggsave(g3_simplified,filename = "resid-dispersion.pdf", width = 10, height = 7)
+
+```
+
+Plot these two figures together using `patchwork`
+
+```{r stitch-figs-a-b, fig.width=10}
+
+g_ab <- (g1 | g3_simplified)
+
+print(g_ab)
+
+ggsave(filename = "frag-robust-disp.png", plot = g_ab, 
+       width = 15, height = 9, units = "cm")
+
+```
+
+
+**Figure S2.1**. **(a)** The relationship between simulated robustness and analytically esimated fragility as calculated on the $n = $ `r nrow(df_webs %>% summarise(n()))` empirical networks matches close the analytical approximation (black line). Each network is coloured by the degree of disperion ($d$) (log10 scale) according to a binomial distribution, where values below 0 represent under-dispersion, 0 is ideally dispersed and values greater than 0 indciate over-dispersion. **(b)** The residuals of the observed robustness to the analytical approximation in Figure S2.1 show a strong relationship with dispersion $\log_{10}(d)$. Colours show the same $\log_{10}(d)$ for direct comparison with points in Figure S2.1. The linear fit shown is the basis for the modified estimate of $R$ given below.
+
+We can then use a linear model as fit to Figure S2.1b to account for dispersion for a new metric that describes Robustness ($R$) given Fragility ($f$) and Dispersion ($d$) of a given network.
+
+$$R \approx G(f,d) = \exp(-f - \frac{2}{3}f^2) + (-0.09749315 -0.12344561 \log(d))$$
+
+
+```{r corrected-figure}
+
+# find the coefficients of log dispersion
+m2 <- lm( I (robustness-robustness_hat)  ~ I(log(dispersion)), 
+         data = df_webs)
+cc <- coef(m2)
+
+# a new proposed estimate of Robustness given f and d
+predictRobustnessDagger <- function(x,d) {
+  exp(-x - (2/3)* x ^2 ) + (cc[1] + cc[2] * log(d))
+    }
+
+
+
+# calculate the correction
+crx <- (cc[1] + cc[2] * log(df_webs$dispersion))
+
+
+
+
+g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion),
+                     y = robustness,
+                     color = log(dispersion))) + 
+  geom_point() + 
+  scale_color_viridis_c() + 
+  # geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
+  geom_abline(intercept = 0, slope = 1) + 
+  ylab("Robustness (R)") + 
+  # xlab(TeX("Corrected Fragility ($f ^ {*}$)")) +
+  xlab("G(f,d)") +
+   labs(color = expression(log(d))) +
+  theme_classic() + 
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 16))
+
+
+print(g6)
+
+
+```
+
+**Figure S2.2.** The relationship betwenn Robustness ($R$) and our new metric $G(f,d)$.
+
+The correlation coefficients for Robustness (R) with the various estimates are:
+
++ $\text{cor}(R,f)$ = `r round(with(df_webs, cor(robustness, fragility, method = "spearman")), 2)`
++ $\text{cor}(R,log(d))$ = `r round(with(df_webs, cor(robustness, log(dispersion), method = "spearman")), 2)`
++ $\text{cor}(R,G(f,d))$ = `r round(with(df_webs, cor(robustness, predictRobustnessDagger(fragility, dispersion), method = "spearman")), 2)`
+
+
+## How does web type affect this relationship?
+
+We can look at the residuals to this relationship and see if there is a pattern by network type. While we could test for this using ANOVA with post-hoc tests, or set up linear model with specified contrasts, I am somewhat loathed given the low sample sizes in some of the groups
+
+```{r}
+
+g_web_type <- ggplot(df_webs, 
+                     aes(x = web_type,
+                         y = robustness - predictRobustnessDagger(fragility, 
+                                                                  dispersion)
+                         )) +
+  geom_boxplot() + 
+  geom_jitter(width = 0.25, aes(alpha = 0.9)) + 
+  geom_hline(yintercept = 0, color = "red")
+  
+
+print(g_web_type)
+
+
+# fit an ANOVA to the residuals: (R - G(f,d)) ~ web_type
+# aj <- aov(robustness ~ web_type, 
+#          offset = predictRobustnessDagger(fragility, 
+#                                           dispersion),
+#          data = df_webs)
+
+# summary(aj)
+
+
+```
+
+
+
+# YOU CAN IGNORE FROM HERE
+
+
+## Other figures
+
+```{r}
+
+g3 <- ggplot(df_webs, aes(x = log10(dispersion),
+                     y = residual,
+                     color = log10(dispersion))) + 
+  geom_point(aes(shape = web_type)) + 
+  scale_color_viridis_c() + 
+  geom_hline(yintercept = 0) + 
+  labs(color = expression(log[10](dispersion)), 
+       shape = "Web Type") + 
+  ylab(expression(R - hat(R))) + 
+  xlab(TeX("$\\log_{10}(\\dispersion)$")) +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 20))
+      
+print(g3)
+
+ggsave(g3,filename = "resid-dispersion-web-type.pdf", width = 10, height = 7)
+
+```
+
+
+
+
+**Figure S2.3**. Same as Figure S2.2 but with additional information of web type as indicated by shape of points for: AF = Anemone-Fish; HP = Host-Parasite; PA = Plant-Ant; PH = Plant-Herbivore; PL = Plant-Pollinator; SD = Seed-Disperser.
+
++ AF = Anemone - Fish (n = `r n_types["AF"]`)
++ HP = Host - Parasite (n = `r n_types["HP"]`)
++ PA = Plant - Ant (n = `r n_types["PA"]`)
++ PH = Plant - Herbivore (n = `r n_types["PH"]`)
++ PL = Plant - Pollinator (n = `r n_types["PL"]`)
++ SD = Seed - dispersers (n = `r n_types["SD"]`)
+
+
+```{r}
+
+g4 <- ggplot(df_webs, aes(x = log10(dispersion),
+                          y = residual,
+                          color = web_type)) + 
+  geom_point(aes(shape = web_type), size = 2) + 
+  scale_color_viridis_d() + 
+  geom_hline(yintercept = 0) + 
+  labs(color = expression(log[10](dispersion)), 
+       shape = "Web Type")+
+  theme_classic() + 
+  theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size))
+      
+print(g4)
+
+# ggsave(g4,filename = "resid-dispersion.pdf", width = 10, height = 7)
+
+```
+
+
+```{r}
+
+g5 <- ggplot(df_webs, aes(x = fragility,
+                     y = robustness,
+                     color = web_type)) + 
+  geom_point(aes(shape = web_type), size = 4) + 
+  scale_color_viridis_d() + 
+  geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
+  theme_classic() + 
+ theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size))
+
+print(g5)
+
+# ggsave(g5,filename = "robust-complexity.pdf", width = 10, height = 7)
+
+```
+
+## Fit linear models
+
+We can fit some linear models to calculate the $R^2$ values of the various explanatory variables of robustness.
+
+```{r}
+
+# N_vec <- 30
+# beta <- 1.3
+
+
+
+# analytical_model <-  with( df_webs, 
+#                            {(N_vec * 
+#                                (exp(-complexity - beta * complexity ^ 2 )) )  / 
+#                                (N_vec + 1)}
+#                            )
+
+
+# null model
+m0 <- lm(robustness ~1, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above with analytical model as offset
+m1 <- lm(robustness ~ -1, 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above including log10(dispersion) as covariate
+m2 <- lm(robustness ~ I(log(dispersion)), 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above including web type as covariate
+m3 <- lm(robustness ~ I(log(dispersion)) + factor(web_type), 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+# model as above including web type, log(dispersion) and web type as covariates
+m4 <- lm(robustness ~ I(log(dispersion)) + factor(web_type), 
+         offset =  robustness_hat, 
+         data = df_webs %>% filter(!is.na(dispersion) & 
+                                            (dispersion > 0)))
+
+
+
+```
+
+

@@ -36,5 +36,5 @@ vignettes/*.pdf
 *.knit.md
 
 # OSX
-.DS_Store
+*.DS_Store
 

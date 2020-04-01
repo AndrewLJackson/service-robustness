@@ -286,13 +286,6 @@ In order to plot the analytical model, we create a dataframe object of a sequenc
 
 new_f <- seq(from = 0, to = 2.5, length.out = 100)
 
-# original approximation
-# est_r <- 0.7*exp(-3.5*new_c**2)+.3*exp(-0.8*new_c)
-
-# new approximation 3/Feb/2020
-N_vec <- 30
-beta <- 1.3
-
 # the estimated Robusteness (Rhat)
 est_r <- predictRobustness(new_f)
 
@@ -310,7 +303,8 @@ g1 <- ggplot(df_webs, aes(x = fragility,
                      y = robustness,
                      color = log10(dispersion))) + 
   geom_point() + 
-  scale_color_viridis_c(guide = guide_legend(override.aes = list(color = "white"))) +
+  scale_color_viridis_c(guide = 
+                          guide_legend(override.aes = list(color = "white"))) +
   geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
   ylab("Robustness (R)") + 
   xlab("Fragility (f)") +
@@ -379,36 +373,48 @@ We can then use a linear model as fit to Figure S2.1b to account for dispersion 
 $$R \approx G(f,d) = \exp(-f - \frac{2}{3}f^2) + (-0.09749315 -0.12344561 \log(d))$$
 
 
+
+Hi Andrew, 
+not exactly what I had in mind: The idea is that in the random model R~1-f for f<1 (i.e it is a linear relationship before it saturates). 
+In the data, the difference between R and its predicted value behaves as a+b*d where d is a measure of dispersion (note to estimate a and b, it might be a good idea to do the fit for data points with f<1, so that the prediction is linear). 
+Thus, R-(1-f) ~ a + b*d thus R~1- (f+a+b*d). Therefore, I expect the corrected fragility F=f+a+b*d to be the universal driver of R, in the sense that a scatter plot of R vs F would graph a curve.   
+Does that make sense?
+
+
+
 ```{r corrected-figure}
 
 # find the coefficients of log dispersion
 m2 <- lm( I (robustness-robustness_hat)  ~ I(log(dispersion)), 
-         data = df_webs)
+         data = df_webs %>% filter(fragility<1))
 cc <- coef(m2)
 
 # a new proposed estimate of Robustness given f and d
-predictRobustnessDagger <- function(x,d) {
-  exp(-x - (2/3)* x ^2 ) + (cc[1] + cc[2] * log(d))
+predictRobustnessDagger <- function(x,d, a, b) {
+  exp(-x - (2/3)* x ^2 ) + (a + b * log(d))
     }
 
+
+r_hat_2 <- data.frame(new_f = new_f,
+                      est_r = predictRobustnessDagger(new_f, 
+                                                      exp(0),
+                                                      cc[1], cc[2]))
 
 
 # calculate the correction
 crx <- (cc[1] + cc[2] * log(df_webs$dispersion))
 
 
-
-
-g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion),
+g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion, cc[1], cc[2]),
                      y = robustness,
                      color = log(dispersion))) + 
   geom_point() + 
   scale_color_viridis_c() + 
-  # geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
+  # geom_line(data = r_hat_2, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
   geom_abline(intercept = 0, slope = 1) + 
   ylab("Robustness (R)") + 
   # xlab(TeX("Corrected Fragility ($f ^ {*}$)")) +
-  xlab("G(f,d)") +
+  xlab("F") +
    labs(color = expression(log(d))) +
   theme_classic() + 
   theme(axis.text = element_text(size = 12),
@@ -416,6 +422,8 @@ g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion),
 
 
 print(g6)
+
+ggsave("R-by-F.png")
 
 
 ```
@@ -426,7 +434,40 @@ The correlation coefficients for Robustness (R) with the various estimates are:
 
 + $\text{cor}(R,f)$ = `r round(with(df_webs, cor(robustness, fragility, method = "spearman")), 2)`
 + $\text{cor}(R,log(d))$ = `r round(with(df_webs, cor(robustness, log(dispersion), method = "spearman")), 2)`
-+ $\text{cor}(R,G(f,d))$ = `r round(with(df_webs, cor(robustness, predictRobustnessDagger(fragility, dispersion), method = "spearman")), 2)`
++ $\text{cor}(R,G(f,d))$ = `r round(with(df_webs, cor(robustness, predictRobustnessDagger(fragility, dispersion, cc[1], cc[2]), method = "spearman")), 2)`
+
+
+```{r test-jeffs-email}
+
+# a range of dispersion values to evaluate over
+range_d <- exp(c(-2,0,2))
+
+test_df <- map_df(as.list(range_d), 
+                  ~data.frame(new_f = new_f, 
+                              new_d = .x,
+                              new_r = predictRobustnessDagger(new_f, .x, 
+                                                               cc[1], cc[2])))
+
+
+g_test <- ggplot(test_df, aes(x = new_f, 
+                              y = new_r, 
+                              color = as.factor(new_d))) + 
+  scale_color_viridis_d(option = "viridis",
+                        labels = log(range_d)) + 
+  geom_line(aes(linetype = new_r < 0),
+            show.legend = FALSE) + 
+  labs(color = expression(log(d))) + 
+  ylab(expression(R)) + 
+  xlab(expression(f)) +
+  theme_classic() + 
+ theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size)) + 
+  geom_hline(yintercept = 0, color = "grey")
+print(g_test)
+
+ggsave("test_F.png")
+
+```
 
 
 ## How does web type affect this relationship?

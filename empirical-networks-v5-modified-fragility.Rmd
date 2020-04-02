@@ -326,7 +326,7 @@ g1 <- ggplot(df_webs, aes(x = fragility,
 
 print(g1)
 # 
-ggsave(g1,filename = "robust-fragility-empirical.png",
+ggsave(g1,filename = "images/robust-fragility-empirical.png",
        width = 20, height = 12, units = "cm",
        scale = 1)
 
@@ -365,7 +365,7 @@ g3_simplified <- ggplot(df_webs %>% filter(fragility < 1),
 
 print(g3_simplified)
 
-ggsave(g3_simplified,filename = "resid-dispersion.png", 
+ggsave(g3_simplified,filename = "images/resid-dispersion.png", 
        width = 20, height = 12, units = "cm")
 
 ```
@@ -433,7 +433,7 @@ g6 <- ggplot(df_webs, aes(x = fstar,
 
 print(g6)
 
-ggsave(g6, filename = "R-by-fstar.png",
+ggsave(g6, filename = "images/R-by-fstar.png"
        width = 20, height = 12, units = "cm")
 
 

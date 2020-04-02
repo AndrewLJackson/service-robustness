@@ -266,6 +266,9 @@ We remove webs that have only 1 trait (n = 3) and webs that show no variation in
 
 df_webs <- df_webs %>% filter( dispersion != 0.0 & !is.na(var_S_per_N) )
 
+# and write to file
+write_csv(df_webs, path = "web_statistics.csv")
+
 ```
 
 ## Plot results
@@ -330,13 +333,14 @@ g1 <- ggplot(df_webs, aes(x = fragility,
 
 ```{r}
 
-g3_simplified <- ggplot(df_webs, aes(x = log(dispersion),
+g3_simplified <- ggplot(df_webs, aes(x = log10(dispersion),
                      y = residual,
-                     color = log(dispersion))) + 
+                     color = log10(dispersion))) + 
   geom_point() + 
   scale_color_viridis_c() + 
   geom_hline(yintercept = 0) + 
-  geom_smooth(method = lm) +
+  # geom_smooth(method = lm) +
+  geom_abline(slope = -0.42, intercept = 0) + 
   labs(color = expression(log(d)), 
        shape = "Web Type") + 
   ylab(expression(R - hat(R))) + 
@@ -385,26 +389,26 @@ Does that make sense?
 ```{r corrected-figure}
 
 # find the coefficients of log dispersion
-m2 <- lm( I (robustness-robustness_hat)  ~  I(log(dispersion)), 
+m2 <- lm( I (robustness-robustness_hat)  ~ -1 +  I(log10(dispersion)), 
          data = df_webs %>% filter(fragility<1))
 cc <- coef(m2)
 
 
 # a new proposed estimate of Robustness given f and d
 predictRobustnessDagger <- function(x,d, a, b) {
-  exp(-x - (2/3)* x ^2 ) + (a + b * log(d))
+  exp(-x - (2/3)* x ^2 ) + (a + b * log10(d))
     }
 
 
 r_hat_2 <- data.frame(new_f = new_f,
                       est_r = predictRobustnessDagger(new_f, 
                                                       exp(0),
-                                                      cc[1], cc[2]))
+                                                      0, 0))
 
 
 g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion, cc[1], cc[2]),
                      y = robustness,
-                     color = log(dispersion))) + 
+                     color = log10(dispersion))) + 
   geom_point() + 
   scale_color_viridis_c() + 
   # geom_line(data = r_hat_2, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
@@ -412,7 +416,7 @@ g6 <-  ggplot(df_webs, aes(x = predictRobustnessDagger(fragility, dispersion, cc
   ylab("Robustness (R)") + 
   # xlab(TeX("Corrected Fragility ($f ^ {*}$)")) +
   xlab("F") +
-   labs(color = expression(log(d))) +
+   labs(color = expression(log[10](d))) +
   theme_classic() + 
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 16))
@@ -437,7 +441,7 @@ The correlation coefficients for Robustness (R) with the various estimates are:
 ```{r test-jeffs-email}
 
 # a range of dispersion values to evaluate over
-range_d <- exp(c(-2,0,2))
+range_d <- 10^(c(-2,0,2))
 
 test_df <- map_df(as.list(range_d), 
                   ~data.frame(new_f = new_f, 
@@ -448,12 +452,12 @@ test_df <- map_df(as.list(range_d),
 
 g_test <- ggplot(test_df, aes(x = new_f, 
                               y = new_r, 
-                              color = log(dispersion),
+                              color = log10(dispersion),
                               group = dispersion)) + 
   # geom_line(aes(linetype = new_r < 0),
   #           show.legend = FALSE) +
   geom_line() + 
-  labs(color = expression(log(d))) + 
+  labs(color = expression(log[10](d))) + 
   ylab(expression(R)) + 
   xlab(expression(f)) +
   theme_classic() + 
@@ -476,12 +480,12 @@ we can then use this relationship to adjust the predicted robustness for a given
 ```{r adust-for-dispersion}
 
 # calculate the correction
-crx <- (cc[1] + cc[2] * log(df_webs$dispersion))
+crx <- (cc[1] + cc[2] * log10(df_webs$dispersion))
 
 
 g8 <-  ggplot(df_webs, aes(x = fragility,
                      y = robustness - crx,
-                     color = log(dispersion))) + 
+                     color = log10(dispersion))) + 
   geom_point() + 
   scale_color_viridis_c() + 
   geom_line(data = r_hat_2, mapping = aes(x = new_f, y = est_r, color = NULL)) + 
@@ -489,7 +493,7 @@ g8 <-  ggplot(df_webs, aes(x = fragility,
   ylab("Corrected Robustness (R*)") + 
   # xlab(TeX("Corrected Fragility ($f ^ {*}$)")) +
   xlab("f") +
-   labs(color = expression(log(d))) +
+   labs(color = expression(log[10](d))) +
   theme_classic() + 
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 16))
@@ -504,6 +508,23 @@ ggsave("CorrectedR-by-f.png")
 
 
 
+## Jeff's new figures 2020/3/2
+
+```{r}
+
+df_webs <- mutate(fstar = fragility + 0.42 * log(dispersion))         
+
+jf1 <- ggplot(data = df_webs, 
+              mapping = aes(x = fstar, 
+                            y = robustness,
+                            color = log10(dispersion))) + 
+  geom_point()
+
+print(jf1)
+
+```
+
+
 ## How does web type affect this relationship?
 
 We can look at the residuals to this relationship and see if there is a pattern by network type. While we could test for this using ANOVA with post-hoc tests, or set up linear model with specified contrasts, I am somewhat loathed given the low sample sizes in some of the groups
@@ -513,7 +534,8 @@ We can look at the residuals to this relationship and see if there is a pattern 
 g_web_type <- ggplot(df_webs, 
                      aes(x = web_type,
                          y = robustness - predictRobustnessDagger(fragility, 
-                                                                  dispersion)
+                                                                  dispersion,
+                                                                  cc[1], cc[2])
                          )) +
   geom_boxplot() + 
   geom_jitter(width = 0.25, aes(alpha = 0.9)) + 

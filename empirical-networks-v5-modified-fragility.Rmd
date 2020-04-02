@@ -277,8 +277,8 @@ Here we set some plotting parameters for consistency across panels.
 
 ```{r plot-defaults}
 
-axis_text_size <- 12
-axis_title_size <- 16
+axis_text_size <- 10
+axis_title_size <- 14
 
 ```
 
@@ -306,8 +306,9 @@ g1 <- ggplot(df_webs, aes(x = fragility,
                      y = robustness,
                      color = log10(dispersion))) + 
   geom_point() + 
-  scale_color_viridis_c(guide = 
-                          guide_legend(override.aes = list(color = "white"))) + 
+  # scale_color_viridis_c(guide = 
+  #                         guide_legend(override.aes = list(color = "white"))) +
+    scale_color_viridis_c(guide = FALSE) + 
   geom_abline(slope = -1, intercept = 1) + 
   geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL), 
             linetype = 2) + 
@@ -323,11 +324,11 @@ g1 <- ggplot(df_webs, aes(x = fragility,
         )
 
 
-# print(g1)
+print(g1)
 # 
-# ggsave(g1,filename = "robust-fragility-empirical.pdf", 
-#        width = 15, height = 9, units = "cm",
-#        scale = 1)
+ggsave(g1,filename = "robust-fragility-empirical.png",
+       width = 20, height = 12, units = "cm",
+       scale = 1)
 
 ```
 
@@ -348,23 +349,24 @@ g3_simplified <- ggplot(df_webs %>% filter(fragility < 1),
                             y = residRf,
                             color = log10(dispersion))) + 
   geom_point() + 
-  scale_color_viridis_c() + 
+  scale_color_viridis_c(guide = FALSE) + 
   geom_hline(yintercept = 0, color = "grey", linetype = 2) + 
   # geom_smooth(method = lm) +
   geom_abline(slope = coef(mRf), 
               intercept = 0) + 
   labs(color = expression(log(d)), 
        shape = "Web Type") + 
-  ylab(expression(R - hat(R))) + 
+  ylab(TeX("$R -1 + f$ , $f<1$")) + 
   xlab(TeX("$\\log(\\dispersion)$")) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size))
   
-      
-# print(g3_simplified)
 
-# ggsave(g3_simplified,filename = "resid-dispersion.pdf", width = 10, height = 7)
+print(g3_simplified)
+
+ggsave(g3_simplified,filename = "resid-dispersion.png", 
+       width = 20, height = 12, units = "cm")
 
 ```
 
@@ -372,12 +374,12 @@ Plot these two figures together using `patchwork`
 
 ```{r stitch-figs-a-b, fig.width=12, fig.height=6}
 
-g_ab <- (g1 | g3_simplified)
-
-print(g_ab)
-
-ggsave(filename = "frag-robust-disp.png", plot = g_ab, 
-       width = 15, height = 9, units = "cm")
+# g_ab <- (g1 | g3_simplified)
+# 
+# print(g_ab)
+# 
+# ggsave(filename = "frag-robust-disp.png", plot = g_ab, 
+       # width = 15, height = 9, units = "cm")
 
 ```
 
@@ -431,7 +433,8 @@ g6 <- ggplot(df_webs, aes(x = fstar,
 
 print(g6)
 
-ggsave("R-by-F.png")
+ggsave(g6, filename = "R-by-fstar.png",
+       width = 20, height = 12, units = "cm")
 
 
 ```

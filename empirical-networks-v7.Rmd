@@ -9,8 +9,10 @@ date: "`r format(Sys.time(), '%d %B %Y')`"
 ```{r setup}
 
 library(tidyverse)
+library(magrittr)
 library(furrr) # for parallel implmenetation of purrr
 library(latex2exp) # for latex style equations in figures
+library(patchwork)
 
 ```
 
@@ -354,8 +356,8 @@ g3 <- ggplot(df_webs,
                           shape = NULL)) + 
   labs(color = "Web Type", 
        shape = "Web Type") + 
-  ylab(TeX("$(R -1 + f)$")) + 
-  xlab(TeX("$\\log_{10}(\\dispersion)$")) +
+  ylab(TeX("$R - (1 - f)$")) + 
+  xlab(TeX("$\\log_{10}(\\d)$")) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size)) + 
@@ -441,12 +443,24 @@ Generate a plot of $R \propto f^*$
 
 ```{r corrected-figure}
 
+# fit an exponential decay function without a constant and assuming 
+# binary data. This is acheived with family = binomial(link = "log") 
+# while removing the intercept via -1 in the model formula.
+m_exp <- glm(formula = robustness ~ fstar - 1, data = df_webs, 
+             family = binomial(link = "log"))
+
+# plot the data and add a line using broom augment and specify the 
+# prediction is to be on the response scale.
 g6 <- ggplot(df_webs, aes(x = fstar, 
                           y = robustness,
                           color = web_type_fac)) + 
   geom_point() + 
   scale_color_viridis_d() + 
-  geom_line(data = fit_df, mapping = aes(x = new_f, y = exp(-5/3*new_f), color = NULL)) + 
+  # geom_line(data = fit_df, mapping = aes(x = new_f, y = exp(-5/3*new_f), color = NULL)) + 
+  geom_line(data = broom::augment(m_exp, 
+                                  newdata = data.frame(fstar = fit_df$new_f),
+                                  type.predict = "response"), 
+            mapping = aes(y = .fitted,  color = NULL)) + 
   ylab("Robustness (R)") + 
   xlab(TeX("Corrected Fragility $(f^*)$")) +
   labs(color = "Web Type", line.style = NULL) +
@@ -463,7 +477,7 @@ ggsave(g6, filename = "images/emp-R-by-fstar.png",
 
 ```
 
-**Figure S2.3.** The relationship betwenn Robustness ($R$) and corrected Fragility measure approximated by $f^* = f + \\log_{10}(d)$, where $\ =$ `r round(abs(coef(mRf)),2)`. The 
+**Figure S2.3.** The relationship betwenn Robustness ($R$) and corrected Fragility measure approximated by $f^* = f + \log_{10}(d)$, where $\lambda =$ `r round(abs(coef(mRf)),2)`. The 
 
 The correlation coefficients for Robustness (R) with the various estimates are:
 
@@ -473,19 +487,27 @@ The correlation coefficients for Robustness (R) with the various estimates are:
 
 ## Residual variance by web type
 
-We explore the residual variance from our define relationship between $R$ and $f^*$ by web type, in order to assess whether there is additional structure in these webs that might further explain departures from the predicted relationship. Across all web types there is an overall trend towards our relationship over-esimating robustness slightly (red dotted line), however the predicted value falls within the 90% prediction interval for all web types (errorbars), although three webs have relatively low replicates: PA and PH have $n = 4$; and AF has $n = 11$. With greater replicates, it may be possible to confirm and explore further any variation among web type; for example both Anenome-Fish (AF) and Host-Parasite (HP) webs show some tendency towards hiher robustness for a given fragility ($f^*$) and dispersion ($d$) compared with Plant-Pollinator (PL) and Seed-Dispersers (SD).
+We explore the residual variance from our define relationship between $R$ and $f^*$ by web type, in order to assess whether there is additional structure in these webs that might further explain departures from the predicted relationship. Specifically we take the residuals $R - \hat{R}$ from the fitted exponential curve that is described by $\hat{R} = \exp(-\kappa f^*)$ Across all web types there is an overall trend towards our relationship over-esimating robustness slightly (red dotted line), however the predicted value falls within the 90% prediction interval for all web types (errorbars), although three webs have relatively low replicates: PA and PH have $n = 4$; and AF has $n = 11$. With greater replicates, it may be possible to confirm and explore further any variation among web type; for example both Anenome-Fish (AF) and Host-Parasite (HP) webs show some tendency towards hiher robustness for a given fragility ($f^*$) and dispersion ($d$) compared with Plant-Pollinator (PL) and Seed-Dispersers (SD).
 
 ```{r}
 
-df_webs <- df_webs %>% mutate(resid_fstar = robustness - fstar)
+# generate R_hat on the predicted data scale
+aug_df_webs <- broom::augment(m_exp, type.predict = "response")
+
+# manually calculate the residuals on this raw predicted scale
+# (within broom::augment they are on the link scale which here is log.) 
+aug_df_webs %<>% mutate(raw_resid = robustness - .fitted)
+
+df_webs <- df_webs %>% mutate(resid_simple = robustness - 1 + fstar,
+                              resid_fstar = aug_df_webs$raw_resid)
 
 summary_by_web_type <- df_webs %>% 
   group_by(web_type_fac) %>% 
   summarise(mu = mean(resid_fstar),
             sd = sd(resid_fstar),
             se = sd(resid_fstar) / sqrt(n()),
-            qa = quantile(resid_fstar, probs = 0.05),
-            qb = quantile(resid_fstar, probs = 0.95))
+            qa = quantile(resid_fstar, probs = 0.025),
+            qb = quantile(resid_fstar, probs = 0.975))
 
 
 g9 <- ggplot(df_webs, 
@@ -503,6 +525,7 @@ g9 <- ggplot(df_webs,
         axis.title = element_text(size = axis_title_size)) + 
   guides(color = FALSE, shape = FALSE, alpha = FALSE) + 
   xlab("Web Type") + 
+  # ylab(TeX("$R - (1 - f^*)$")) + 
   ylab("Deviance") + 
   geom_errorbar(data = summary_by_web_type,
                 mapping = aes(x = web_type_fac,
@@ -516,10 +539,10 @@ g9 <- ggplot(df_webs,
              mapping = aes(x = web_type_fac,
                            y = mu,
                            color = NULL),
-             shape = 3) + 
-  geom_hline(yintercept = mean(df_webs$resid_fstar), 
-             color = "red",
-             linetype = 3)
+             shape = 3) #+ 
+  # geom_hline(yintercept = mean(df_webs$resid_fstar), 
+  #            color = "red",
+  #            linetype = 3)
       
 print(g9)
 
@@ -528,6 +551,26 @@ ggsave(g9,filename = "images/emp-resid-fstar-by-web.png",
 
 
 ```
+
+## Build the final four panel figure
+
+```{r four-panel-fig}
+
+
+gg_panel <- (( g1 + ggtitle("(a)") | g3  + ggtitle("(b)") ) / 
+             ( g6 + ggtitle("(c)") | g9  + ggtitle("(d)")))
+
+# gg_panel <- (g1 | g3) \ (g6 | g9)
+
+print(gg_panel)
+
+
+ggsave(gg_panel,filename = "images/fig-2-panel.png",
+       width = 28, height = 18, units = "cm",)
+
+
+```
+
 
 ## Save results to file 
 

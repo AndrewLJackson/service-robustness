@@ -293,8 +293,8 @@ g1 <- ggplot(df_webs, aes(x = fragility,
             color = "black") + 
   geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL), 
             linetype = 2) + 
-  ylab("Robustness (R)") + 
-  xlab("Fragility (f)") +
+  ylab(TeX("$\\textit{R}$")) + 
+  xlab(TeX("$\\textit{f}$")) +
    labs(color = expression(log[10](d))) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
@@ -356,8 +356,8 @@ g3 <- ggplot(df_webs,
                           shape = NULL)) + 
   labs(color = "Web Type", 
        shape = "Web Type") + 
-  ylab(TeX("$R - (1 - f)$")) + 
-  xlab(TeX("$\\log_{10}(\\d)$")) +
+  ylab(TeX("$\\textit{R} - (1 - \\textit{f})$")) + 
+  xlab(TeX("$\\log_{10}(\\textit{d})$")) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size)) + 
@@ -461,8 +461,8 @@ g6 <- ggplot(df_webs, aes(x = fstar,
                                   newdata = data.frame(fstar = fit_df$new_f),
                                   type.predict = "response"), 
             mapping = aes(y = .fitted,  color = NULL)) + 
-  ylab("Robustness (R)") + 
-  xlab(TeX("Corrected Fragility $(f^*)$")) +
+  ylab(TeX("\\textit{R}")) + 
+  xlab(TeX("$\\textit{f}^*$")) +
   labs(color = "Web Type", line.style = NULL) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
@@ -525,7 +525,7 @@ g9 <- ggplot(df_webs,
         axis.title = element_text(size = axis_title_size)) + 
   guides(color = FALSE, shape = FALSE, alpha = FALSE) + 
   xlab("Web Type") + 
-  # ylab(TeX("$R - (1 - f^*)$")) + 
+  # ylab(TeX("$\\textit{R} - (1 - \\textit{f}^*)$")) + 
   ylab("Deviance") + 
   geom_errorbar(data = summary_by_web_type,
                 mapping = aes(x = web_type_fac,

@@ -343,11 +343,11 @@ Plot the residuals of $R = 1-f$ against $\log_{10}(dispersion)$.
 
 g3 <- ggplot(df_webs, 
                         aes(x = log10(dispersion),
-                            y = residRf,
-                            color = web_type_fac,
-                            shape = web_type_fac)) + 
-  geom_point() + 
-  scale_color_viridis_d() + 
+                            y = residRf, 
+                            color = fstar)) + 
+  geom_point(alpha = 0.6) + 
+  # scale_color_viridis_d() + 
+  scale_color_viridis_c(begin = 0, end = 0.0001) + 
   geom_hline(yintercept = 0, color = "grey", linetype = 2) + 
   geom_vline(xintercept = 0, color = "grey", linetype = 2) + 
   geom_line(mapping = aes(x = log10d,
@@ -360,8 +360,12 @@ g3 <- ggplot(df_webs,
   xlab(TeX("$\\log_{10}(\\textit{d})$")) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
-        axis.title = element_text(size = axis_title_size)) + 
-guides(color = guide_legend(override.aes = list(linetype = 0)))
+        axis.title = element_text(size = axis_title_size),
+        legend.title = element_text(color = "white"),
+        legend.text = element_text(color = "white")) +
+  guides(color = guide_legend(override.aes = list(color = "white",
+                                                  text = "white")))
+# guides(color = FALSE, shape = FALSE, alpha = FALSE) +
   
 
 print(g3)
@@ -453,21 +457,28 @@ m_exp <- glm(formula = robustness ~ fstar - 1, data = df_webs,
 # prediction is to be on the response scale.
 g6 <- ggplot(df_webs, aes(x = fstar, 
                           y = robustness,
-                          color = web_type_fac)) + 
-  geom_point() + 
-  scale_color_viridis_d() + 
+                          color = fstar)) + 
+  geom_point(alpha = 0.6) + 
+  scale_color_viridis_c(begin = 0, end = 0.0001) +  
+  # scale_color_viridis_d() + 
   # geom_line(data = fit_df, mapping = aes(x = new_f, y = exp(-5/3*new_f), color = NULL)) + 
   geom_line(data = broom::augment(m_exp, 
                                   newdata = data.frame(fstar = fit_df$new_f),
                                   type.predict = "response"), 
             mapping = aes(y = .fitted,  color = NULL)) + 
-  ylab(TeX("\\textit{R}")) + 
+  ylab(TeX("$\\textit{R}$")) + 
   xlab(TeX("$\\textit{f}^*$")) +
   labs(color = "Web Type", line.style = NULL) +
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size)) + 
-  guides(color = guide_legend(override.aes = list(linetype = 0)))
+  theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size),
+        legend.title = element_text(color = "white"),
+        legend.text = element_text(color = "white")) +
+  guides(color = guide_legend(override.aes = list(color = "white",
+                                                  text = "white")))
+  # guides(color = guide_legend(override.aes = list(linetype = 0)))
 
 print(g6)
 
@@ -512,18 +523,20 @@ summary_by_web_type <- df_webs %>%
 
 g9 <- ggplot(df_webs, 
              aes(x = web_type_fac,
-                 y = resid_fstar)) + 
+                 y = resid_fstar,
+                 color = fstar)) + 
   # geom_boxplot(outlier.shape = NA) + 
-  geom_jitter(mapping = aes(color = web_type_fac,
-                            shape = web_type_fac), 
-              width = 0.3,
-              alpha = 0.7) + 
-  scale_color_viridis_d() + 
+  geom_jitter(width = 0.3,
+              alpha = 0.6,
+              size = 0.75) + 
+  # scale_color_viridis_d() + 
+  # scale_color_manual(values = "black") + 
+  scale_color_viridis_c(begin = 0, end = 0.0001) + 
   geom_hline(yintercept = 0, color = "grey", linetype = 2) + 
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size)) + 
-  guides(color = FALSE, shape = FALSE, alpha = FALSE) + 
+  # guides(color = FALSE, shape = FALSE, alpha = FALSE) + 
   xlab("Web Type") + 
   # ylab(TeX("$\\textit{R} - (1 - \\textit{f}^*)$")) + 
   ylab("Deviance") + 
@@ -535,11 +548,18 @@ g9 <- ggplot(df_webs,
                               color = NULL),
                 color = "black",
                 width = 0.25) + 
-  geom_point(summary_by_web_type, 
-             mapping = aes(x = web_type_fac,
-                           y = mu,
-                           color = NULL),
-             shape = 3) #+ 
+  # geom_point(summary_by_web_type,
+  #            mapping = aes(x = web_type_fac,
+  #                          y = mu,
+  #                          color = NULL),
+  #            shape = 3) +
+  theme(axis.text = element_text(size = axis_text_size),
+        axis.title = element_text(size = axis_title_size),
+        legend.title = element_text(color = "white"),
+        legend.text = element_text(color = "white")) +
+  guides(color = guide_legend(override.aes = list(color = "white",
+                                                  text = "white")))
+#+ 
   # geom_hline(yintercept = mean(df_webs$resid_fstar), 
   #            color = "red",
   #            linetype = 3)

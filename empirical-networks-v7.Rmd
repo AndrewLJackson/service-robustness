@@ -101,7 +101,7 @@ robustness <- function(Aperm, S = ncol(Aperm)){
   mm <- 0
   
   # move along columns from left to right until we lose a trait
-  while (mm==0 & nn <= S) {
+  while (mm==0 && nn < S) {
     nn <- nn + 1
     mm <- min(rowSums( as.matrix(Aperm[, 1:nn])))
   }
@@ -159,6 +159,20 @@ $$d  = \frac{1}{q} \frac{\text{Var}(S_n)}{\bar{S_n}}$$
 
 ```{r summary-statistics}
 
+# our own function to calculate population variance, not sample variance.
+popVar <- function(x){
+  
+  x <- as.matrix(x)
+  
+  # number of rows, which is sample size
+  n <- nrow(x)
+  
+  # compute and return population variance and correct it so it uses
+  # n in place of n-1 as the demoninator.
+  cov(x) *  (n - 1) / n
+  
+}
+
 # map over all the webs and calculate some of the fundamental statistics
 # used in our theory. Retuns a data.frame via map_dfr().
 # Add a column designating the web type at the end from the vector
@@ -168,7 +182,7 @@ df_webs <-  all_webs %>%
                       N = as.numeric(nrow(.x)),
                       sum_A = as.numeric(sum(.x)),
                       min_S_per_N = min(rowSums(.x)),
-                      var_S_per_N = var(rowSums(.x)),
+                      var_S_per_N = popVar(rowSums(.x)), # change to population variance
                       mean_S_per_N = mean(rowSums(.x)),
                       est_p = sum(.x) / (ncol(.x) * nrow(.x)),
                       fragility = fragilityEstimate(.x)),
@@ -269,7 +283,7 @@ In order to plot the analytical model, we create a dataframe object of a sequenc
 
 new_f <- seq(from = 0, to = 2.5, length.out = 100)
 
-# the estimated Robusteness (Rhat)
+# the estimated Robustness (Rhat)
 est_r <- exp(-new_f - new_f^2) #predictRobustness(new_f)
 
 fit_df <- data.frame(new_f = new_f,
@@ -309,7 +323,7 @@ ggsave(g1,filename = "images/emp-robust-fragility.png",
 
 ```
 
-*Figure S2.1.* The relationship between simulated robustness and analytically esimated fragility as calculated on the $n =$ `r nrow(df_webs)` empirical networks matches close the analytical approximation (black line). Each network is coloured by the degree of disperion ($d$) (log10 scale) according to a binomial distribution, where values below 0 represent under-dispersion, 0 is ideally dispersed and values greater than 0 indciate over-dispersion. The solid black line indicates the approximately linear relationship of $R = 1-f$ for $f < 1$, and the dotted black line the quadratic relationship $R = \exp{(-f -f^2)}$
+*Figure S2.1.* The relationship between simulated robustness and analytically esimated fragility as calculated on the $n =$ `r nrow(df_webs)` empirical networks matches close the analytical approximation (black line). Each network is coloured by the degree of disperion ($d$) (log10 scale) according to a binomial distribution, where values below 0 represent under-dispersion, 0 is ideally dispersed and values greater than 0 indciate over-dispersion. The solid black line indicates the approximately linear relationship of $R = 1-f$ for $f < 1$, and the dotted black line the quadratic exponential relationship $R = \exp{(-f -f^2)}$
 
 
 Fit the linear model and calculate the residuals to this fit.
@@ -344,7 +358,7 @@ Plot the residuals of $R = 1-f$ against $\log_{10}(dispersion)$.
 g3 <- ggplot(df_webs, 
                         aes(x = log10(dispersion),
                             y = residRf, 
-                            color = fstar)) + 
+                            color = dispersion)) + 
   geom_point(alpha = 0.6) + 
   # scale_color_viridis_d() + 
   scale_color_viridis_c(begin = 0, end = 0.0001) + 
@@ -434,12 +448,16 @@ We can then use a linear model as fit to Figure S2.1b to account for dispersion 
 
 ```{r}
 
-# regress robsustness against (1 - fragility) and then esimate the coefficient
+# regress robsustness against (1 - fragility) and then estimate the coefficient
 # of the linear regression of the residuals to this plot against
 # log10(dispersion) and calculate
-# fstar = fragility +  * log10(dispersion)
-df_webs <- df_webs %>% 
-  mutate(fstar = pmax(fragility - .fitted, runif(n(), 0, 0.1)))
+# fstar = fragility +  gamma * log10(dispersion)
+# df_webs <- df_webs %>% 
+#   mutate(fstar = pmax(fragility - .fitted, runif(n(), 0, 0.1)))
+
+df_webs <- df_webs %>%
+  mutate(fstar = pmax(fragility - coef(mRf) * log10(dispersion), runif(n(), 0, 0.1)))
+
 
 ```
 
@@ -453,6 +471,13 @@ Generate a plot of $R \propto f^*$
 m_exp <- glm(formula = robustness ~ fstar - 1, data = df_webs, 
              family = binomial(link = "log"))
 
+# generate the phenomenological curve y = exp(-fstar - fstar^2)
+fit_df_fstar <- data.frame(new_fstar = seq(from = 0, to = 2.5, 
+                                           length.out = 100)) %>%
+  mutate(est_r = exp(-new_fstar - new_fstar^2))
+ 
+
+
 # plot the data and add a line using broom augment and specify the 
 # prediction is to be on the response scale.
 g6 <- ggplot(df_webs, aes(x = fstar, 
@@ -462,10 +487,10 @@ g6 <- ggplot(df_webs, aes(x = fstar,
   scale_color_viridis_c(begin = 0, end = 0.0001) +  
   # scale_color_viridis_d() + 
   # geom_line(data = fit_df, mapping = aes(x = new_f, y = exp(-5/3*new_f), color = NULL)) + 
-  geom_line(data = broom::augment(m_exp, 
-                                  newdata = data.frame(fstar = fit_df$new_f),
-                                  type.predict = "response"), 
-            mapping = aes(y = .fitted,  color = NULL)) + 
+  # geom_line(data = broom::augment(m_exp, 
+  #                                 newdata = data.frame(fstar = fit_df$new_f),
+  #                                 type.predict = "response"), 
+  #           mapping = aes(y = .fitted,  color = NULL)) + 
   ylab(TeX("$\\textit{R}$")) + 
   xlab(TeX("$\\textit{f}^*$")) +
   labs(color = "Web Type", line.style = NULL) +
@@ -477,7 +502,12 @@ g6 <- ggplot(df_webs, aes(x = fstar,
         legend.title = element_text(color = "white"),
         legend.text = element_text(color = "white")) +
   guides(color = guide_legend(override.aes = list(color = "white",
-                                                  text = "white")))
+                                                  text = "white"))) + 
+  geom_abline(slope = -1, intercept = 1, color = "black") + 
+  geom_line(data = fit_df_fstar, 
+            mapping = aes(x = new_fstar, 
+                          y = est_r), 
+            color = "black", linetype = 2)
   # guides(color = guide_legend(override.aes = list(linetype = 0)))
 
 print(g6)
@@ -507,11 +537,15 @@ aug_df_webs <- broom::augment(m_exp, type.predict = "response")
 
 # manually calculate the residuals on this raw predicted scale
 # (within broom::augment they are on the link scale which here is log.) 
-aug_df_webs %<>% mutate(raw_resid = robustness - .fitted)
+# AJ 22-sep-20 no longer used.
+# aug_df_webs %<>% mutate(raw_resid = robustness - .fitted)
+#
+# df_webs <- df_webs %>% mutate(resid_simple = robustness - 1 + fstar,
+#                               resid_fstar = aug_df_webs$raw_resid)
 
 df_webs <- df_webs %>% mutate(resid_simple = robustness - 1 + fstar,
-                              resid_fstar = aug_df_webs$raw_resid)
-
+                              resid_fstar = robustness - exp(-fstar - fstar^2))
+                              
 summary_by_web_type <- df_webs %>% 
   group_by(web_type_fac) %>% 
   summarise(mu = mean(resid_fstar),
@@ -601,3 +635,10 @@ write the dataframe to file for sharing
 write_csv(df_webs, path = "web_statistics.csv")
 
 ```
+
+## Sort the dataset for subsequent analysis
+
+```{r}
+df_webs %>% arrange(fstar, desc(S), resid_fstar, robustness) %>% select(file, S, N, resid_fstar, robustness, dispersion, fstar)
+```
+

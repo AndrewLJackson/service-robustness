@@ -9,6 +9,7 @@ output: html_notebook
 library(tidyverse)
 library(magrittr)
 library(furrr) # for parallel implmenetation of purrr
+library(patchwork)
 
 ```
 
@@ -113,15 +114,19 @@ robustness <- function(Aperm, S = ncol(Aperm)){
   # the logical test if all traits are present
   mm <- min(rowSums( as.matrix(Aperm[,])))
   
+  # store the fragility values up to extinction
+  f_trajectory <- NA * numeric(S)
+  
   # move along columns from left to right until we lose a trait
   while (mm != 0 && nn < S) {
     
     
-    # Calculate fragility just prior to removing a species
-    pre_loss_f <- fragilityEstimate(Aperm)
     
     # update species removal counter
     nn <- nn + 1 
+    
+    # Calculate fragility just prior to removing a species
+    f_trajectory[nn] <- fragilityEstimate(Aperm[, -(1:(nn-1))])
     
     # test whether all traits are present
     mm <- min(rowSums( as.matrix(Aperm[, -(1:nn)])))
@@ -132,8 +137,9 @@ robustness <- function(Aperm, S = ncol(Aperm)){
   R <- nn / S * 1.0
   
   # return both outputs
-  out <- list(R = R,
-              pre_loss_f = pre_loss_f)
+  out <- c(R = R, 
+           nn = nn,
+           f_trajectory = f_trajectory)
   
   # return( (S-nn+1) / (S * 1.0))
   
@@ -164,15 +170,11 @@ shuffleExinctionSingle <- function(A, S) {
 sampleRobustness <- function(A, S = ncol(A), nb = 10){
   
   # loop over replicates using parallel furrr map function.
-  res <- future_map_dbl(1:nb, ~shuffleExinctionSingle( A, S))
+  res <- future_map_dfr(1:nb, ~shuffleExinctionSingle( A, S))
   
   # return the mean of the results vector which is mean of 
   
-  R <- list()
-  R$mu <- mean(res)
-  R$Q025 <- quantile(res, 0.025)
-  R$Q975 <- quantile(res, 0.975)
-  return(R)  
+  return(res)  
   
 }
 
@@ -225,7 +227,7 @@ Calculate the stats on the full network.
 
 ```{r}
 
-reps <- 100000
+reps <- 10
 
 f_0 <- fragilityEstimate(net_data)
 
@@ -237,88 +239,34 @@ d_0 <- dispersion(net_data)
 f_star_0 <- f_0 - (-0.2870702 * log10(d_0))
 
 # estimate robustness by sampling
-RR <- sampleRobustness(net_data, nb = reps)
-R_0 <- RR$mu
-R_0_025 <- RR$Q025
-R_0_975 <- RR$Q975
+R_0 <- sampleRobustness(net_data, nb = reps)
+
+R_0 %<>% mutate(pre_loss_f_star = pre_loss_f - (-0.2870702 * log10(d_0)))
 
 ```
 
-
-Prime the results vectors for the removals.
-
 ```{r}
-# use right assignment to make it easier to read
-numeric(ncol(net_data)) -> f_res -> d_res -> f_star_res -> R_res
+g1 <- ggplot(data = R_0, 
+             mapping = aes(x = pre_loss_f_star - f_star_0, 
+                           y = R)) + 
+  geom_point(alpha = 0.5) 
 
-numeric(ncol(net_data)) -> sum_A_res -> S_res -> N_res -> R_res_025 -> R_res_975
+g2 <- g1 + aes(x = (pre_loss_f_star - f_star_0) / nn)
 
-```
 
-Run over each species removal
-
-```{r}
-
-for (i in 1:ncol(net_data)) {
-  
-  # remove the ith column
-  A <- net_data[,-i]
-  
-  # and calculate our metrics
-  f_res[i] <- fragilityEstimate(A)
-  d_res[i] <- dispersion(A)
-  # f_star_res[i] <- max(f_res[i] + (-0.2870702 * log10(d_res[i])), runif(1, 0, 0.1))
-  f_star_res[i] <- max(f_res[i] - (-0.2870702 * log10(d_res[i])), 0)
-  RR <- sampleRobustness(A, nb = reps)
-  R_res[i] <- RR$mu
-  R_res_025[i]  <- RR$Q025
-  R_res_975[i]  <- RR$Q975
-  
-  # some additional statistics for testing and debugging
-  sum_A_res[i] <- sum(A)
-  S_res[i] <- ncol(A)
-  N_res[i] <- nrow(A)
-  
-  
-}
-
-# bundle into a data.frame
-
-df_res <- data.frame(f_res = f_res, 
-                     d_res = d_res, 
-                     f_star_res = f_star_res, 
-                     R_res = R_res,
-                     sum_A_res = sum_A_res,
-                     S_res = S_res,
-                     N_res = N_res)
-
-```
-
-And plot
-
-```{r}
-
-g1 <- ggplot(data = df_res, mapping = aes(x = f_star_0 - f_star_res,
-                                          y = R_0 - R_res)) + 
-  geom_point() + 
-  geom_smooth(method = "lm") + 
-  ggtitle(this_file)  
-  # geom_errorbar(aes(yCCmin = R_0 - (R_res_025), ymax = R_0 - (R_res_975)))
-  # scale_x_log10() + 
-  # scale_y_log10()
-
-print(g1)
-
+print((g1 | g2))
 ```
 
 
-Which robustness values are higher in the leave-one-out networks?
+
+
+## Run the simulation
 
 ```{r}
 
-more_robust <- which(R_res > R_0)
-  
-df_res[more_robust, ]
+# nb <- 10
+# 
+# res <- future_map_dfr(1:nb, ~shuffleExinctionSingle( A, S))
 
 ```
 

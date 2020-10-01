@@ -114,19 +114,17 @@ robustness <- function(Aperm, S = ncol(Aperm)){
   # the logical test if all traits are present
   mm <- min(rowSums( as.matrix(Aperm[,])))
   
-  # store the fragility values up to extinction
-  f_trajectory <- NA * numeric(S)
+  
   
   # move along columns from left to right until we lose a trait
   while (mm != 0 && nn < S) {
     
     
+    # Calculate fragility just prior to removing a species
+    pre_loss_f <- fragilityEstimate(Aperm[, -(1:nn)])
     
     # update species removal counter
     nn <- nn + 1 
-    
-    # Calculate fragility just prior to removing a species
-    f_trajectory[nn] <- fragilityEstimate(Aperm[, -(1:(nn-1))])
     
     # test whether all traits are present
     mm <- min(rowSums( as.matrix(Aperm[, -(1:nn)])))
@@ -137,9 +135,9 @@ robustness <- function(Aperm, S = ncol(Aperm)){
   R <- nn / S * 1.0
   
   # return both outputs
-  out <- c(R = R, 
-           nn = nn,
-           f_trajectory = f_trajectory)
+  out <- list(R = R,
+              pre_loss_f = pre_loss_f, 
+              nn = nn)
   
   # return( (S-nn+1) / (S * 1.0))
   
@@ -227,7 +225,7 @@ Calculate the stats on the full network.
 
 ```{r}
 
-reps <- 10
+reps <- 2000
 
 f_0 <- fragilityEstimate(net_data)
 

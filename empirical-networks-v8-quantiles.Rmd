@@ -1,5 +1,5 @@
 ---
-title: "Estimate Robustness of Real Networks - median approach"
+title: "Estimate Robustness of Real Networks - quantile approach"
 output: html_notebook
 author: Andrew L Jackson, Jean-Francois Arnoldi, Sam P. Ross & Ian Donohue
 date: "`r format(Sys.time(), '%d %B %Y')`"

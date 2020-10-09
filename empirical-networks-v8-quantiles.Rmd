@@ -871,6 +871,36 @@ ggsave(gg_panel,filename = "images/fig-2-panel.png",
 
 ```
 
+## Explore heteroscedacity of variance
+
+```{r}
+
+g_het_1 <- ggplot(data = df_webs, 
+                  mapping = aes(x = robustness_50,
+                                y = robustness_75 - robustness_25, 
+                                color = log10(dispersion))) + 
+  geom_point(alpha = 0.5) + 
+  scale_color_viridis_c()
+
+# ------------------------------------------------------------------------------
+g_het_2 <- ggplot(data = df_webs, 
+                  mapping = aes(x = fstar_50,
+                                y = robustness_75 - robustness_25)) + 
+  geom_point(alpha = 0.5)
+
+# ------------------------------------------------------------------------------
+
+g_75_25 <- g_het_1 + 
+  aes(x = robustness_25,
+      y = robustness_75)
+
+
+print((g_het_1 | g_het_2))
+
+print(g_75_25)
+
+```
+
 
 ## Save results to file 
 
@@ -887,6 +917,31 @@ write the dataframe to file for sharing
 ```{r}
 df_webs %>% arrange(fstar_50, desc(S), resid_fstar_50, robustness_50) %>% select(file, S, N, resid_fstar_50, robustness_50, dispersion, fstar_50)
 ```
+
+## Save the raw robustness data
+
+Conver the tibble to a data.frame and export
+
+```{r}
+
+# extract the robustness values from the tibble list and convert to df
+extract_R <- as.matrix(as.data.frame(df_webs$robustness), dimnames = NULL)
+
+# remove column names
+colnames(extract_R) <- NULL
+
+# transpose to match the results matrix
+extract_R <- t(extract_R)
+
+df_export <- as.data.frame(df_webs %>% select(S, N, sum_A, est_p, dispersion))
+
+df_export <- cbind(df_export, extract_R)
+
+write.csv(df_export, file = "export/explore-fstar-alternatives.csv", 
+          row.names = FALSE)
+
+```
+
 
 
 

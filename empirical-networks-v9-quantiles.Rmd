@@ -10,7 +10,7 @@ date: "`r format(Sys.time(), '%d %B %Y')`"
 
 library(tidyverse)
 library(magrittr)
-library(furrr) # for parallel implmenetation of purrr
+library(furrr) # for parallel implentation of purrr
 library(latex2exp) # for latex style equations in figures
 library(patchwork)
 
@@ -45,7 +45,7 @@ all_web_files <- paste0("data/", all_files[-remove_these])
 all_webs <- map(all_web_files, ~sign(read.csv(.x)))
 
 # add names to each of the list entries. Required by map()
-names(all_webs) <- all_web_files
+names(all_webs) <- all_web_fileszeno
 
 # a table of all the webs by type - used to create summary counts of each 
 # web type.
@@ -274,10 +274,6 @@ df_webs %<>% mutate(robustness_50 = robustness %>% map_dbl(median),
                     robustness_75 = robustness %>% map_dbl(quantile, 0.75))
 
 
-# AJ NOT NEEDED
-# add the estimated fragility for each network based on their fragility
-# df_webs <- df_webs %>% mutate(robustness_hat = predictRobustness(fragility))
-
 ```
 
 
@@ -295,9 +291,6 @@ We remove webs that have only 1 trait (n = 3) and webs that show no variation in
 # remove webs that dont meet our criteria
 df_webs %<>% filter( dispersion != 0.0 & !is.na(var_S_per_N) )
 
-# remove a few more
-# df_webs %<>% filter( N > 2 & S >= 10)
-
 ```
 
 
@@ -310,23 +303,6 @@ Here we set some plotting parameters for consistency across panels.
 
 axis_text_size <- 10
 axis_title_size <- 14
-
-```
-
-
-In order to plot the analytical model, we create a dataframe object of a sequence of fragility values spanning out observed range and the corresponding predicted robustness ($\hat{R}$). 
-
-```{r create-a-dataframe-for-jeffs-model, fig.width=15, fig.height=7}
-
-# AJ NOT NEEDED
-# new_f <- seq(from = 0, to = 2.5, length.out = 100)
-# 
-# # the estimated Robustness (Rhat)
-# est_r <- exp(-new_f - new_f^2) #predictRobustness(new_f)
-# 
-# fit_df <- data.frame(new_f = new_f,
-#                      est_r = est_r)
-
 
 ```
 

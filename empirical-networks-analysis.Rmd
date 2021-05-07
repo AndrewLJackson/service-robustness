@@ -20,6 +20,7 @@ library(patchwork) # for easy panel plot creation
 # AJ - im not sure this is leading to any noticeable speed update.
 plan(multisession(workers = 3))
 
+# used to time the length of code execution.
 t0 <- Sys.time()
 
 ```
@@ -179,7 +180,7 @@ popVar <- function(x){
   n <- nrow(x)
   
   # compute and return population variance and correct it so it uses
-  # n in place of n-1 as the demoninator.
+  # n in place of n-1 as the denominator.
   cov(x) *  (n - 1) / n
   
 }

@@ -1,5 +1,5 @@
 ---
-title: "Estimate Robustness of Real Networks - quantile approach"
+title: "Estimate Robustness of Real Networks"
 output: html_notebook
 author: Andrew L Jackson, Jean-Francois Arnoldi, Sam P. Ross & Ian Donohue
 date: "`r format(Sys.time(), '%d %B %Y')`"
@@ -10,9 +10,9 @@ date: "`r format(Sys.time(), '%d %B %Y')`"
 
 library(tidyverse)
 library(magrittr)
-library(furrr) # for parallel implentation of purrr
+library(furrr)     # for parallel implementation of purrr
 library(latex2exp) # for latex style equations in figures
-library(patchwork)
+library(patchwork) # for easy panel plot creation
 
 # set up the multicore for the function sampleRobustness which calls them.
 # im not sure if i should do this within sampleRobustness or if its ok to 
@@ -67,7 +67,7 @@ We used all the available bipartite webs from [http://www.web-of-life.es](Web of
 
 ## Summary statistics
 
-### Define some functions that we will use to generate summary statics
+Here we define new functions to generate summary statistics.
 
 A function to calculate our measure of fragility $f$, 
 
@@ -158,17 +158,6 @@ sampleRobustness <- function(A, S = ncol(A), nb = 10){
   return(res)
   
 }
-
-```
-
-
-**_AJ - below no longer needed_**
-
-A gaussian-exponential function to estimate robustness from fragility $R = \exp(-f - \frac{2}{3}x^2)$
-
-```{r predict-robustness-from-fragility}
-
-predictRobustness <- function(x) {exp(-x - (2/3)* x ^2 )}
 
 ```
 
@@ -319,8 +308,6 @@ g1 <- ggplot(df_webs, aes(x = f_50,
                               yy = c(1, 0)),
             mapping = aes(x = xx, y = yy),
             color = "black") + 
-  # geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL), 
-  #           linetype = 2) + 
   ylab(TeX("$\\textit{R_{0.50}}$")) + 
   xlab(TeX("$\\textit{f_{0.50}}$")) +
    labs(color = expression(log[10](d))) +
@@ -341,8 +328,6 @@ g1_25 <- ggplot(df_webs, aes(x = f_25,
                               yy = c(1, 0)),
             mapping = aes(x = xx, y = yy),
             color = "black") + 
-  # geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL), 
-  #           linetype = 2) + 
   ylab(TeX("$\\textit{R_{0.25}}$")) + 
   xlab(TeX("$\\textit{f_{0.25}}$")) +
    labs(color = expression(log[10](d))) +
@@ -363,8 +348,6 @@ g1_75 <- ggplot(df_webs, aes(x = f_75,
                               yy = c(1, 0)),
             mapping = aes(x = xx, y = yy),
             color = "black") + 
-  # geom_line(data = fit_df, mapping = aes(x = new_f, y = est_r, color = NULL), 
-  #           linetype = 2) + 
   ylab(TeX("$\\textit{R_{0.75}}$")) + 
   xlab(TeX("$\\textit{f_{0.75}}$")) +
    labs(color = expression(log[10](d))) +
@@ -390,7 +373,7 @@ ggsave((g1_25 | g1 | g1_75),filename = "images/emp-robust-fragility.png",
 *Figure S2.1.* The relationship between simulated robustness and analytically esimated fragility as calculated on the $n =$ `r nrow(df_webs)` empirical networks matches close the analytical approximation (black line). Each network is coloured by the degree of disperion ($d$) (log10 scale) according to a binomial distribution, where values below 0 represent under-dispersion, 0 is ideally dispersed and values greater than 0 indciate over-dispersion. The solid black line indicates the approximately linear relationship of $R = 1-f$ for $f < 1$, and the dotted black line the quadratic exponential relationship $R = \exp{(-f -f^2)}$
 
 
-Fit the linear model and calculate the residuals to this fit.
+Fit the linear model without an intercept (i.e. forced through the origin) using the syntax `lm(y ~ -1 + x)` and calculate the residuals to this fit.
 ```{r}
 
 # add columns for the residuals to the expected R = 1 - fragility
@@ -403,7 +386,6 @@ df_webs <- df_webs %>% mutate(residRf_50 = robustness_50 -1 + f_50,
 
 
 # model of the residuals of R = 1-f tor f<1 on log(dispersion)
-# fit breakpoint regression at the origin
 mRf_50 <- lm(I(residRf_50  / (f_50 * (1 - f_50))) ~ -1 +  log10d,
            data = df_webs)
 
@@ -415,72 +397,6 @@ mRf_25 <- lm(I(residRf_25  / (f_25 * (1 - f_25))) ~ -1 +log10d,
 mRf_75 <- lm(I(residRf_75  / (f_75 * (1 - f_75))) ~ -1 + log10d,
            data = df_webs)
 
-
-
-
-
-# when fitting without an intercept we need to manually add in a = 0
-cc <- c(0, coef(mRf_50))
-
-
-# Use broom::augment() to predict the residuals for the entire dataset, i.e. 
-# for all data including f<1 which was used to fit, but also f>1. augment()
-# adds it on to the existing data and by default retains all variables.
-
-
-```
-
-plot the polynomial test model
-```{r}
-
-cubeRoot <- function(x) sign(x) * abs(x) ^ (1/3)
-
-myInvLogit <- function(x){1/(1 + exp(-x))}
-
-erf <- function(x) -(2 * pnorm(x * sqrt(2)) - 1)
-
-# break point around the origin
-m_test <- lm(I(residRf_50  / (f_50 * (1 - f_50))) ~ log10d,
-           data = df_webs)
-
-# m_test <- lm(residRf_50 ~ -1 + I(tanh(log10d)),
-#            data = df_webs)
-
-# m_test_neg <- lm(residRf_50 ~ -1 + log10d, 
-#            data = df_webs %>% filter(log10d < 0))
-# 
-# m_test_pos <- lm(residRf_50 ~ -1 + log10d, 
-#            data = df_webs %>% filter(log10d > 0))
-
-
-gtest <- ggplot(df_webs, 
-                        aes(x = log10(dispersion),
-                            y = residRf_50  / (f_50 * (1 - f_50)), 
-                            color = dispersion)) + 
-  geom_point(alpha = 0.6) + 
-  # scale_color_viridis_d() + 
-  scale_color_viridis_c(begin = 0, end = 0.0001) + 
-  geom_hline(yintercept = 0, color = "grey", linetype = 2) + 
-  geom_vline(xintercept = 0, color = "grey", linetype = 2) + 
-  geom_line(data = broom::augment(m_test, newdata = df_webs),
-            mapping = aes(x = log10d,
-                          y = .fitted,
-                          color = NULL,
-                          shape = NULL)) + 
-  labs(color = "Web Type", 
-       shape = "Web Type") + 
-  ylab(TeX("$deviance_{50} / (\\textit{f_{0.50}} (1 - \\textit{f_{0.50}}))$")) + 
-  xlab(TeX("$\\log_{10}(\\textit{d})$")) +
-  theme_classic() + 
-  theme(axis.text = element_text(size = axis_text_size),
-        axis.title = element_text(size = axis_title_size),
-        legend.title = element_text(color = "white"),
-        legend.text = element_text(color = "white")) +
-  guides(color = guide_legend(override.aes = list(color = "white",
-                                                  text = "white")))
-
-print(gtest)
-ggsave(gtest, filename = "images/breakpoint-dispersion.png")
 ```
 
 
@@ -512,7 +428,8 @@ g3 <- ggplot(df_webs,
         legend.title = element_text(color = "white"),
         legend.text = element_text(color = "white")) +
   guides(color = guide_legend(override.aes = list(color = "white",
-                                                  text = "white")))
+                                                  text = "white"))) + 
+  scale_y_continuous(breaks = c(-5, 0, 5, 10), limits = c(-5, 13))
   
 
 # ------------------------------------------------------------------------------
@@ -540,7 +457,8 @@ g3_25 <- ggplot(df_webs,
         legend.title = element_text(color = "white"),
         legend.text = element_text(color = "white")) +
   guides(color = guide_legend(override.aes = list(color = "white",
-                                                  text = "white")))
+                                                  text = "white"))) + 
+  scale_y_continuous(breaks = c(-5, 0, 5, 10), limits = c(-5, 13))
 
 # ------------------------------------------------------------------------------
 
@@ -568,7 +486,8 @@ g3_75 <- ggplot(df_webs,
         legend.title = element_text(color = "white"),
         legend.text = element_text(color = "white")) +
   guides(color = guide_legend(override.aes = list(color = "white",
-                                                  text = "white")))
+                                                  text = "white"))) + 
+  scale_y_continuous(breaks = c(-5, 0, 5, 10), limits = c(-5, 13))
 
 
 
@@ -590,29 +509,9 @@ ggsave((g3_25 | g3 | g3_75),
 
 ## Calculate modified measure of fragility $f^*$
 
-We can then use a linear model as fit to Figure S2.1b to account for dispersion for a new metric that describes Robustness ($R$) given Fragility ($f$) and Dispersion ($d$) of a given network.
+We can then use a linear model as fit to Figure S2.1b to account for dispersion for a new metric ($f^*$) that describes Robustness ($R$) given Fragility ($f$) and Dispersion ($d$) of a given network.
 
 ```{r}
-
-# regress robsustness against (1 - fragility) and then estimate the coefficient
-# of the linear regression of the residuals to this plot against
-# log10(dispersion) and calculate
-# fstar = fragility +  gamma * log10(dispersion)
-# df_webs <- df_webs %>% 
-#   mutate(fstar = pmax(fragility - .fitted, runif(n(), 0, 0.1)))
-
-# df_webs <- df_webs %>%
-#   mutate(fstar_50 = pmax(f_50 - coef(mRf_50) * log10(dispersion), runif(n(), 0, 0.1)))
-
-# df_webs <- df_webs %>%
-#   mutate(fstar_50 = f_50 + coef(mRf_50) * log10(dispersion),
-#          fstar_25 = f_25 - coef(mRf_25) * log10(dispersion),
-#          fstar_75 = f_75 - coef(mRf_75) * log10(dispersion),
-#          fstar_50_test = f_50 - 
-#            coef(m_test)[1] * log10(dispersion) * (log10(dispersion)<0) - 
-#            coef(m_test)[2] * log10(dispersion) * (log10(dispersion)>0)
-#          )
-
 
 df_webs <- df_webs %>% 
   mutate(fstar_50 = f_50 * (1 + ((1-f_50) * -unclass(fitted(mRf_50)))),
@@ -620,7 +519,6 @@ df_webs <- df_webs %>%
          fstar_75 = f_75 * (1 + ((1-f_75) * -unclass(fitted(mRf_75))))
   )
 
-# f*= f ( 1 + g (1-f) log(d) ).
 
 
 ```
@@ -731,17 +629,7 @@ We explore the residual variance from our define relationship between $R$ and $f
 
 ```{r}
 
-# generate R_hat on the predicted data scale
-# aug_df_webs <- broom::augment(m_exp, type.predict = "response")
-
-# manually calculate the residuals on this raw predicted scale
-# (within broom::augment they are on the link scale which here is log.) 
-# AJ 22-sep-20 no longer used.
-# aug_df_webs %<>% mutate(raw_resid = robustness - .fitted)
-#
-# df_webs <- df_webs %>% mutate(resid_simple = robustness - 1 + fstar,
-#                               resid_fstar = aug_df_webs$raw_resid)
-
+# calculate residuals of R based on fstar for the median only as an example.
 df_webs <- df_webs %>% mutate(resid_fstar_50 = robustness_50 - 1 + fstar_50)
                               
 summary_by_web_type <- df_webs %>% 
@@ -761,14 +649,11 @@ g9 <- ggplot(df_webs,
   geom_jitter(width = 0.3,
               alpha = 0.6,
               size = 0.75) + 
-  # scale_color_viridis_d() + 
-  # scale_color_manual(values = "black") + 
   scale_color_viridis_c(begin = 0, end = 0.0001) + 
   geom_hline(yintercept = 0, color = "grey", linetype = 2) + 
   theme_classic() + 
   theme(axis.text = element_text(size = axis_text_size),
         axis.title = element_text(size = axis_title_size)) + 
-  # guides(color = FALSE, shape = FALSE, alpha = FALSE) + 
   xlab("Network Type") + 
   ylab("Deviance") + 
   geom_errorbar(data = summary_by_web_type,
@@ -785,13 +670,11 @@ g9 <- ggplot(df_webs,
         legend.text = element_text(color = "white")) +
   guides(color = guide_legend(override.aes = list(color = "white",
                                                   text = "white")))
-#+ 
-  # geom_hline(yintercept = mean(df_webs$resid_fstar), 
-  #            color = "red",
-  #            linetype = 3)
-      
+
+# print to screen / file
 print(g9)
 
+# save to file
 ggsave(g9,filename = "images/emp-resid-fstar-by-web.png",
        width = 20, height = 12, units = "cm")
 
@@ -812,8 +695,6 @@ This is the 2x2 panel plot that appears in the main text.
 gg_panel <- (( g1 + ggtitle("(a)") | g3  + ggtitle("(b)") ) / 
              ( g6 + ggtitle("(c)") | g9  + ggtitle("(d)")))
 
-# gg_panel <- (g1 | g3) \ (g6 | g9)
-
 print(gg_panel)
 
 
@@ -824,6 +705,8 @@ ggsave(gg_panel,filename = "images/fig-panel.png",
 ```
 
 ## Explore heteroscedacity of variance
+
+We can visual heteroscedacity of variance in robustness by plotting the interquartile range on the y-axis against either the median robustness or fragility on the x-axis.
 
 ```{r}
 
@@ -848,18 +731,9 @@ g_het_2 <- ggplot(data = df_webs,
 
 # ------------------------------------------------------------------------------
 
-# g_75_25 <- g_het_1 + 
-#   aes(x = robustness_25,
-#       y = robustness_75)
-
-
 print((g_het_1 | g_het_2))
 
 ggsave(g_het_2,filename = "images/R-heteroskedascity.png")
-
-# print(g_75_25)
-
-# print(g_het_1 + aes(color = log10(N)))
 
 ```
 
@@ -876,15 +750,19 @@ write the dataframe to file for sharing
 
 ## Sort the dataset for subsequent analysis
 
-```{r}
-df_webs %>% arrange(fstar_50, desc(S), resid_fstar_50, robustness_50) %>% select(file, S, N, resid_fstar_50, robustness_50, dispersion, fstar_50)
+Note that this optional chunk is not evaluated in the supplied version. It may be useful if one wants to quickly scan the file to locate networks of high or low fragility.
+
+```{r, eval = FALSE}
+df_webs %>% 
+  arrange(fstar_50, desc(S), resid_fstar_50, robustness_50) %>% 
+  select(file, S, N, resid_fstar_50, robustness_50, dispersion, fstar_50)
 ```
 
 ## Save the raw robustness data
 
-Conver the tibble to a data.frame and export
+Convert the tibble to a data.frame and export as *.csv file. Note that this optional chunk is not evaluated in the supplied version. 
 
-```{r}
+```{r, eval = FALSE}
 
 # extract the robustness values from the tibble list and convert to df
 extract_R <- as.matrix(as.data.frame(df_webs$robustness), dimnames = NULL)

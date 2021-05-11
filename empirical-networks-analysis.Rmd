@@ -712,7 +712,7 @@ We can visual heteroscedacity of variance in robustness by plotting the interqua
 ```{r}
 
 g_het_1 <- ggplot(data = df_webs, 
-                  mapping = aes(x = robustness_50,
+                  mapping = aes(x = fstar_50,
                                 y = robustness_75 - robustness_25, 
                                 color = log10(dispersion))) + 
   geom_point(alpha = 0.5) + 
@@ -728,7 +728,7 @@ g_het_2 <- ggplot(data = df_webs,
         axis.title = element_text(size = axis_title_size)) + 
   geom_smooth(color = "black") + 
   ylab(TeX("$\\textit{R_{0.75} - R_{0.25}}$")) + 
-  xlab(TeX("$\\textit{R_{0.50}}$")) 
+  xlab(TeX("$\\textit{f^*_{0.50}}$")) 
 
 # ------------------------------------------------------------------------------
 

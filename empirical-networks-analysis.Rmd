@@ -46,7 +46,7 @@ all_web_files <- paste0("data/", all_files[-remove_these])
 all_webs <- map(all_web_files, ~sign(read.csv(.x)))
 
 # add names to each of the list entries. Required by map()
-names(all_webs) <- all_web_fileszeno
+names(all_webs) <- all_web_files
 
 # a table of all the webs by type - used to create summary counts of each 
 # web type.

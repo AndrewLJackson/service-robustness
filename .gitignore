@@ -38,3 +38,6 @@ vignettes/*.pdf
 # OSX
 *.DS_Store
 
+# Custom
+/paper/
+
